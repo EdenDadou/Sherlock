@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { BlockVisionService } from './blockvision.service';
+import { EnvioService } from './envio.service';
 import { ContractDetectorService } from './contract-detector.service';
 import { prisma } from '~/lib/db/prisma';
 
@@ -29,11 +29,11 @@ export interface DiscoveredDApp {
 
 class DiscoveryScannerService extends EventEmitter {
   private isScanning = false;
-  private blockVisionService: BlockVisionService;
+  private envioService: EnvioService;
   private contractDetectorService: ContractDetectorService;
   private progress: ScanProgress = {
     currentBlock: 0,
-    totalBlocks: 40000,
+    totalBlocks: 10000,
     dappsDiscovered: 0,
     contractsFound: 0,
     progress: 0,
@@ -42,12 +42,11 @@ class DiscoveryScannerService extends EventEmitter {
 
   constructor() {
     super();
-    this.blockVisionService = new BlockVisionService({
-      apiKey: process.env.BLOCKVISION_API_KEY || '',
-      baseUrl: process.env.BLOCKVISION_BASE_URL || 'https://api.blockvision.org',
+    this.envioService = new EnvioService({
+      hyperSyncUrl: process.env.ENVIO_HYPERSYNC_URL || 'https://monad-testnet.hypersync.xyz',
       chainId: process.env.MONAD_CHAIN_ID || 'monad-testnet'
     });
-    this.contractDetectorService = new ContractDetectorService(this.blockVisionService);
+    this.contractDetectorService = new ContractDetectorService(this.envioService as any);
   }
 
   async startScan(): Promise<void> {
@@ -58,7 +57,7 @@ class DiscoveryScannerService extends EventEmitter {
     this.isScanning = true;
     this.progress = {
       currentBlock: 0,
-      totalBlocks: 40000,
+      totalBlocks: 10000, // Scan des 10000 derniers blocs
       dappsDiscovered: 0,
       contractsFound: 0,
       progress: 0,
@@ -66,25 +65,43 @@ class DiscoveryScannerService extends EventEmitter {
     };
 
     try {
-      const latestBlock = await this.blockVisionService.getLatestBlockNumber();
-      const startBlock = Math.max(0, latestBlock - 40000);
-
+      console.log('🔍 Démarrage de la découverte de contrats avec Envio HyperSync...');
       this.emit('progress', this.progress);
 
-      // Scanner par chunks de 1000 blocs
-      const chunkSize = 1000;
-      for (let block = startBlock; block <= latestBlock; block += chunkSize) {
+      // Utiliser Envio HyperSync pour une découverte ultra-rapide
+      const discoveredContracts = await this.envioService.discoverContracts({
+        maxBlocks: 10000, // Scanner les 10000 derniers blocs
+        maxContracts: 100, // Limiter à 100 contrats
+      });
+
+      console.log(`✓ ${discoveredContracts.length} contrats découverts`);
+
+      // Traiter chaque contrat découvert
+      for (const contract of discoveredContracts) {
         if (!this.isScanning) {
           break; // Arrêt demandé
         }
 
-        const endBlock = Math.min(block + chunkSize - 1, latestBlock);
-
         try {
-          // Scanner les contrats dans ce chunk
-          await this.contractDetectorService.scanForNewContracts(block);
+          // Sauvegarder le contrat dans la base de données
+          await this.contractDetectorService.saveContract(
+            contract.address,
+            contract.deployer,
+            new Date(contract.timestamp * 1000)
+          );
 
-          // Compter les contrats et dApps
+          // Récupérer l'activité du contrat pour déterminer sa popularité
+          const activity = await this.envioService.getContractActivity(contract.address, 5000);
+
+          // Si le contrat a des logs, c'est probablement un contrat actif
+          if (activity.isActive && activity.logCount > 0) {
+            await this.contractDetectorService.analyzeAndGroupContract(
+              contract.address,
+              activity.logCount
+            );
+          }
+
+          // Mettre à jour les statistiques
           this.progress.contractsFound = await prisma.contract.count();
           this.progress.dappsDiscovered = await prisma.dApp.count();
 
@@ -101,16 +118,13 @@ class DiscoveryScannerService extends EventEmitter {
           }
 
           // Mettre à jour la progression
-          this.progress.currentBlock = endBlock;
-          this.progress.progress = Math.round(((endBlock - startBlock) / 40000) * 100);
+          this.progress.currentBlock++;
+          this.progress.progress = Math.round((this.progress.currentBlock / discoveredContracts.length) * 100);
           this.emit('progress', this.progress);
 
-          // Petit délai pour éviter de surcharger l'API
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
         } catch (error) {
-          console.error(`Erreur lors du scan du chunk ${block}-${endBlock}:`, error);
-          // Continue avec le prochain chunk malgré l'erreur
+          console.error(`Erreur lors du traitement du contrat ${contract.address}:`, error);
+          // Continue avec le contrat suivant
         }
       }
 
@@ -118,11 +132,13 @@ class DiscoveryScannerService extends EventEmitter {
       this.progress.progress = 100;
       this.emit('progress', this.progress);
       this.emit('completed', this.progress);
+      console.log('✓ Découverte terminée avec succès');
 
     } catch (error) {
       this.progress.status = 'error';
       this.progress.error = error instanceof Error ? error.message : 'Erreur inconnue';
       this.emit('error', this.progress);
+      console.error('❌ Erreur lors du scan:', error);
       throw error;
     } finally {
       this.isScanning = false;

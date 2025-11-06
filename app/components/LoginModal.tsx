@@ -174,17 +174,17 @@ export function LoginModal({
 
   return (
     <div
-      style={styles.backdrop}
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000]"
       onClick={(e) => {
         // Autoriser la fermeture uniquement si pas de lock
         if (!lockClose) onClose();
       }}
     >
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ ...styles.title, color: "#111" }}>Connect wallet</h2>
+      <div className="bg-white rounded-xl py-6 px-7 pb-8 w-[360px] shadow-[0_8px_28px_-6px_rgba(0,0,0,0.25)] relative grid gap-5 text-gray-900 text-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 className="m-0 text-xl font-semibold text-gray-900">Connect wallet</h2>
         {!isConnected ? (
-          <div style={styles.section}>
-            <div style={{ display: "grid", gap: 8 }}>
+          <div className="grid gap-3.5 text-gray-900">
+            <div className="grid gap-2">
               {connectors.map((c) => {
                 const locked = !!connectLock && connectLock !== c.id;
                 const disabled = isPending || locked;
@@ -208,23 +208,27 @@ export function LoginModal({
                     }}
                     disabled={disabled}
                     aria-busy={disabled}
-                    style={buttonStyle(disabled)}
+                    className={`py-2.5 px-3.5 rounded-[10px] border border-gray-300 text-sm font-medium ${
+                      disabled
+                        ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                        : "bg-gray-900 text-white cursor-pointer hover:bg-gray-800 transition-colors"
+                    }`}
                   >
                     {c.name}
                   </button>
                 );
               })}
             </div>
-            <small style={styles.note}>
+            <small className="text-gray-700 text-xs">
               Select a wallet. Network will auto-switch to Monad Testnet.
             </small>
             {connectError && (
-              <div style={styles.error}>
+              <div className="text-red-700 text-[13px] font-medium">
                 Connection error: {connectError.message}
                 {connectError.message?.includes(
                   "wallet_requestPermissions"
                 ) && (
-                  <div style={{ marginTop: 6 }}>
+                  <div className="mt-1.5">
                     A request is already open in your wallet. Approve or close
                     the popup, then try again.
                   </div>
@@ -233,40 +237,34 @@ export function LoginModal({
             )}
           </div>
         ) : (
-          <div style={styles.section}>
-            <div style={styles.connectedBox}>
-              <div style={{ color: "#111", fontWeight: 500 }}>Address</div>
-              <div style={styles.address}>{address}</div>
+          <div className="grid gap-3.5 text-gray-900">
+            <div className="grid gap-1 text-sm text-gray-900">
+              <div className="text-gray-900 font-medium">Address</div>
+              <div className="font-mono text-[13px] break-all text-gray-900">{address}</div>
             </div>
             {chainId !== monadTestnet.id && (
-              <div
-                style={{
-                  display: "grid",
-                  gap: 10,
-                  padding: 12,
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  background: "#fff7ed",
-                  color: "#9a3412",
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>Wrong network</div>
+              <div className="grid gap-2.5 p-3 border border-gray-200 rounded-[10px] bg-orange-50 text-orange-900">
+                <div className="font-semibold">Wrong network</div>
                 <div>Please switch to Monad Testnet to continue.</div>
                 <button
                   onClick={() => switchChain({ chainId: monadTestnet.id })}
                   disabled={switching}
-                  style={buttonStyle(switching)}
+                  className={`py-2.5 px-3.5 rounded-[10px] border border-gray-300 text-sm font-medium ${
+                    switching
+                      ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                      : "bg-gray-900 text-white cursor-pointer hover:bg-gray-800 transition-colors"
+                  }`}
                 >
                   {switching ? "Switching…" : "Switch to Monad Testnet"}
                 </button>
                 {switchError && (
-                  <div style={styles.error}>
+                  <div className="text-red-700 text-[13px] font-medium">
                     Switch error: {switchError.message}
                   </div>
                 )}
               </div>
             )}
-            <div style={styles.actionsRow}>
+            <div className="flex gap-3 flex-wrap text-gray-900">
               <button
                 onClick={() => {
                   // Clear signature state and allow re-selection
@@ -274,7 +272,7 @@ export function LoginModal({
                   signRequestedRef.current = false;
                   disconnect();
                 }}
-                style={outlineButtonStyle}
+                className="py-2.5 px-3.5 rounded-[10px] border border-gray-300 bg-white text-gray-900 cursor-pointer text-sm font-medium hover:bg-gray-50 transition-colors"
               >
                 Disconnect
               </button>
@@ -299,7 +297,11 @@ export function LoginModal({
                 disabled={
                   signing || chainId !== monadTestnet.id || !dynamicMessage
                 }
-                style={buttonStyle(signing)}
+                className={`py-2.5 px-3.5 rounded-[10px] border border-gray-300 text-sm font-medium ${
+                  signing || chainId !== monadTestnet.id || !dynamicMessage
+                    ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                    : "bg-gray-900 text-white cursor-pointer hover:bg-gray-800 transition-colors"
+                }`}
               >
                 {signing
                   ? "Signing…"
@@ -308,9 +310,9 @@ export function LoginModal({
                     : "Preparing…"}
               </button>
               {signing && signStartTs && Date.now() - signStartTs > 15000 && (
-                <div style={{ fontSize: 12, color: "#9a3412" }}>
+                <div className="text-xs text-orange-900">
                   Signature taking longer than usual. You can retry.
-                  <div style={{ marginTop: 6 }}>
+                  <div className="mt-1.5">
                     <button
                       onClick={() => {
                         resetSign();
@@ -320,7 +322,7 @@ export function LoginModal({
                           message: dynamicMessage || FALLBACK_MESSAGE,
                         });
                       }}
-                      style={outlineButtonStyle}
+                      className="py-2.5 px-3.5 rounded-[10px] border border-gray-300 bg-white text-gray-900 cursor-pointer text-sm font-medium hover:bg-gray-50 transition-colors"
                     >
                       Retry signature
                     </button>
@@ -328,18 +330,13 @@ export function LoginModal({
                 </div>
               )}
               {retryFlag && !signing && !isSuccess && !signError && (
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                <div className="text-xs text-gray-500">
                   Retry initiated. Await wallet popup…
                 </div>
               )}
             </div>
             {(serverVerifying || signError || localVerifyError) && (
-              <div
-                style={{
-                  ...styles.error,
-                  color: serverVerifying ? "#6b7280" : styles.error.color,
-                }}
-              >
+              <div className={`text-[13px] font-medium ${serverVerifying ? "text-gray-500" : "text-red-700"}`}>
                 {serverVerifying && "Verifying signature on server…"}
                 {signError && <div>Signature error: {signError.message}</div>}
                 {localVerifyError && <div>Auth error: {localVerifyError}</div>}
@@ -352,7 +349,7 @@ export function LoginModal({
             onClick={() => {
               onClose();
             }}
-            style={styles.close}
+            className="absolute top-2 right-2.5 bg-transparent border-none text-[22px] cursor-pointer leading-none text-gray-900 hover:text-gray-600 transition-colors"
           >
             ×
           </button>
@@ -361,74 +358,3 @@ export function LoginModal({
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  backdrop: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.40)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  modal: {
-    background: "#fff",
-    borderRadius: 12,
-    padding: "24px 28px 32px",
-    width: "360px",
-    boxShadow: "0 8px 28px -6px rgba(0,0,0,0.25)",
-    position: "relative",
-    display: "grid",
-    gap: 20,
-    color: "#111",
-    fontSize: 14,
-  },
-  title: { margin: 0, fontSize: 20, fontWeight: 600, color: "#111" },
-  section: { display: "grid", gap: 14, color: "#111" },
-  note: { color: "#374151", fontSize: 12 },
-  connectedBox: { display: "grid", gap: 4, fontSize: 14, color: "#111" },
-  address: {
-    fontFamily: "monospace",
-    fontSize: 13,
-    wordBreak: "break-all",
-    color: "#111",
-  },
-  actionsRow: { display: "flex", gap: 12, flexWrap: "wrap", color: "#111" },
-  error: { color: "#b91c1c", fontSize: 13, fontWeight: 500 },
-  close: {
-    position: "absolute",
-    top: 8,
-    right: 10,
-    background: "transparent",
-    border: "none",
-    fontSize: 22,
-    cursor: "pointer",
-    lineHeight: 1,
-    color: "#111",
-  },
-};
-
-function buttonStyle(disabled: boolean): React.CSSProperties {
-  return {
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #ddd",
-    background: disabled ? "#e5e7eb" : "#111",
-    color: disabled ? "#374151" : "#fff",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontSize: 14,
-    fontWeight: 500,
-  };
-}
-
-const outlineButtonStyle: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 10,
-  border: "1px solid #ddd",
-  background: "#fff",
-  color: "#111",
-  cursor: "pointer",
-  fontSize: 14,
-  fontWeight: 500,
-};

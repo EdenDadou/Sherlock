@@ -1,6 +1,6 @@
 # Sherlock - Monad Testnet dApp Discovery Tool
 
-Sherlock est un outil de découverte et d'analyse de dApps pour le réseau Monad Testnet. Il utilise l'API BlockVision Monad Indexing pour scanner, classifier et suivre automatiquement les applications décentralisées déployées sur le réseau.
+Sherlock est un outil de découverte et d'analyse de dApps pour le réseau Monad Testnet. Il utilise Envio HyperSync pour scanner, classifier et suivre automatiquement les applications décentralisées déployées sur le réseau avec une vitesse 10,000x supérieure aux RPC traditionnels.
 
 ## Fonctionnalités
 
@@ -35,8 +35,8 @@ Sherlock est un outil de découverte et d'analyse de dApps pour le réseau Monad
 
 - **Frontend**: React Router, TypeScript, Tailwind CSS
 - **Backend**: Node.js, TypeScript
-- **Base de données**: PostgreSQL avec Prisma ORM
-- **API externe**: BlockVision Monad Indexing API
+- **Base de données**: SQLite avec Prisma ORM
+- **Indexer**: Envio HyperSync (10,000x plus rapide que les RPC traditionnels)
 - **Automation**: node-cron pour les tâches planifiées
 
 ## Installation
@@ -64,9 +64,10 @@ cp .env.example .env
 ```
 
 Variables importantes :
-- `BLOCKVISION_API_KEY`: Clé API BlockVision
-- `BLOCKVISION_BASE_URL`: URL de base de l'API BlockVision (défaut: https://api.blockvision.org/v1)
+- `ENVIO_HYPERSYNC_URL`: URL de l'API Envio HyperSync (défaut: https://monad-testnet.hypersync.xyz)
 - `MONAD_CHAIN_ID`: Identifiant de la chaîne (monad-testnet)
+
+**Note**: Pas besoin de clé API - Envio HyperSync est gratuit et open-source ! 🎉
 
 3. **Initialiser la base de données**
 
@@ -96,29 +97,28 @@ L'application sera accessible sur `http://localhost:5173`
 ```
 app/
 ├── services/                    # Services backend
-│   ├── blockvision.service.ts   # Client API BlockVision
+│   ├── envio.service.ts        # Client Envio HyperSync
 │   ├── contract-detector.service.ts  # Détection de contrats
-│   ├── dapp-classifier.service.ts    # Classification de dApps
-│   ├── activity-tracker.service.ts   # Suivi d'activité
-│   └── cron.service.ts          # Gestion des tâches cron
-├── routes/                      # Routes API et pages
-│   ├── api.dapps.ts            # GET /api/dapps
-│   ├── api.dapps.$id.ts        # GET /api/dapps/:id
+│   ├── discovery-scanner.service.ts  # Scanner de découverte
+│   └── cron.service.ts         # Gestion des tâches cron
+├── routes/                     # Routes API et pages
+│   ├── api.dapps.ts           # GET /api/dapps
+│   ├── api.dapps.$id.ts       # GET /api/dapps/:id
 │   ├── api.contracts.$address.ts # GET /api/contracts/:address
 │   ├── api.activity.$dappId.ts  # GET /api/activity/:dappId
-│   ├── api.stats.ts            # GET /api/stats
-│   ├── api.admin.cron.ts       # POST /api/admin/cron
-│   ├── dashboard.tsx           # Page dashboard
-│   ├── dapps.tsx               # Liste des dApps
-│   └── dapps.$id.tsx           # Détails d'une dApp
+│   ├── api.stats.ts           # GET /api/stats
+│   ├── api.admin.cron.ts      # POST /api/admin/cron
+│   ├── dashboard.tsx          # Page dashboard
+│   ├── dapps.tsx              # Liste des dApps
+│   └── dapps.$id.tsx          # Détails d'une dApp
 ├── lib/
 │   └── db/
-│       └── prisma.ts           # Client Prisma
+│       └── prisma.ts          # Client Prisma
 └── types/
-    └── blockvision.ts          # Types TypeScript
+    └── envio.ts               # Types TypeScript pour Envio
 
 prisma/
-└── schema.prisma               # Schéma de base de données
+└── schema.prisma              # Schéma de base de données
 ```
 
 ## API Endpoints
@@ -259,12 +259,12 @@ yarn start
 
 ## Troubleshooting
 
-### Problème de connexion à BlockVision
+### Problème de connexion à Envio HyperSync
 
 Vérifier:
-- La clé API est valide
-- Le rate limit n'est pas dépassé
-- L'URL de base est correcte
+- L'URL HyperSync est correcte (`https://monad-testnet.hypersync.xyz`)
+- La connexion internet est stable
+- Consulter les logs pour plus de détails
 
 ### Base de données non synchronisée
 

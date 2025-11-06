@@ -2,27 +2,24 @@
 
 ## 🚀 Démarrage en 3 étapes
 
-### 1. Configuration de l'API BlockVision
+### 1. Configuration d'Envio HyperSync
 
-Avant de commencer, vous avez besoin d'une clé API BlockVision :
+L'application utilise maintenant **Envio HyperSync** pour l'indexation des données Monad - c'est gratuit, rapide et fiable !
 
-1. Visitez [BlockVision](https://blockvision.org)
-2. Créez un compte
-3. Obtenez votre clé API
-
-Ensuite, créez votre fichier `.env` :
+Créez votre fichier `.env` :
 
 ```bash
 cp .env.example .env
 ```
 
-Éditez le fichier `.env` et ajoutez votre clé API :
+La configuration par défaut fonctionne out-of-the-box :
 
 ```env
-BLOCKVISION_API_KEY="votre_cle_api_ici"
-BLOCKVISION_BASE_URL="https://api.blockvision.org/v1"
+ENVIO_HYPERSYNC_URL="https://monad-testnet.hypersync.xyz"
 MONAD_CHAIN_ID="monad-testnet"
 ```
+
+Pas besoin de clé API - Envio HyperSync est gratuit et open-source ! 🎉
 
 ### 2. La base de données est déjà prête !
 
@@ -135,7 +132,7 @@ npx prisma generate
 ```
 
 ### Les cron jobs ne fonctionnent pas
-Vérifiez les logs dans la console. Assurez-vous que votre clé API BlockVision est valide.
+Vérifiez les logs dans la console. Assurez-vous que l'URL Envio HyperSync est correcte.
 
 ### Port 5173 déjà utilisé
 Changez le port dans `vite.config.ts` ou arrêtez l'application qui utilise ce port.

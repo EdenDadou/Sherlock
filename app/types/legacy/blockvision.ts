@@ -62,15 +62,34 @@ export interface Block {
   miner: string;
 }
 
+// Types pour l'API v2 de BlockVision
+
+export interface AddressInfo {
+  address: string;
+  type: string;
+  isContract: boolean;
+  verified: boolean;
+  ens: string | null;
+  name: string | null;
+  isContractCreated: boolean;
+}
+
 export interface AccountTransaction {
   hash: string;
-  from: string;
-  to: string;
-  value: string;
+  blockHash: string;
   blockNumber: string;
   timestamp: string;
-  methodId?: string;
-  functionName?: string;
+  from: AddressInfo;
+  to: AddressInfo | null;
+  value: string;
+  transactionFee: string;
+  gasUsed: string;
+  nonce: string;
+  transactionIndex: string;
+  contractAddress: string | null;
+  status: number; // 1 = success, 0 = failed
+  methodID: string;
+  methodName: string;
 }
 
 export interface Token {
@@ -80,22 +99,31 @@ export interface Token {
   decimals: number;
   type: 'ERC20' | 'ERC721' | 'ERC1155';
   balance?: string;
+  logo?: string;
 }
 
-export interface ContractEvent {
+export interface NativeHolder {
+  holder: string;
+  accountAddress: string;
+  amount: string;
+  percentage: string;
+  usdValue: string;
+  isContract: boolean;
+}
+
+export interface TokenHolder {
   address: string;
-  topics: string[];
-  data: string;
-  blockNumber: string;
-  transactionHash: string;
-  eventName?: string;
-  args?: Record<string, any>;
+  amount: string;
+  percentage: string;
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-  hasMore: boolean;
+  code: number;
+  reason: string;
+  message: string;
+  result: {
+    nextPageCursor?: string;
+    total: number;
+    data: T[];
+  };
 }
