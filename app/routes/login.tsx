@@ -1,6 +1,7 @@
 import React from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
+import { useNavigate } from "react-router";
 import { LoginModal } from "../components/LoginModal";
 
 export function meta() {
@@ -11,6 +12,7 @@ export function meta() {
 }
 
 export default function Login() {
+  const navigate = useNavigate();
   const { address, isConnected, chain } = useAccount();
   const { connect, isPending, error } = useConnect();
   const hasInjected =
@@ -57,7 +59,16 @@ export default function Login() {
             </div>
           )}
           <button
-            onClick={() => disconnect()}
+            onClick={() => {
+              if (address) {
+                // Clear authentication data
+                localStorage.removeItem(`sherlock_auth_${address}`);
+                localStorage.removeItem(`sherlock_pending_${address}`);
+              }
+              disconnect();
+              // Redirect to login page after disconnect
+              navigate("/login");
+            }}
             style={{
               padding: "10px 14px",
               borderRadius: 10,
@@ -109,6 +120,8 @@ export default function Login() {
           }
           setSigned(true);
           setModalOpen(false);
+          // Redirect to home after successful authentication
+          navigate("/home");
         }}
       />
     </main>
