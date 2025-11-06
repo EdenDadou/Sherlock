@@ -27,16 +27,9 @@ export default function Index() {
 
   // Show loading state while checking authentication
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-      }}
-    >
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 18, color: "#6b7280" }}>Loading...</div>
+    <div className="flex items-center justify-center h-screen">
+      <div className="text-center">
+        <div className="text-lg text-gray-500">Loading...</div>
       </div>
     </div>
   );

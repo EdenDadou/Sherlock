@@ -3,7 +3,10 @@
     "allow": [
       "Bash(yarn add:*)",
       "Bash(npx prisma:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(rm:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

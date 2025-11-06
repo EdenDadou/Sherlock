@@ -39,22 +39,22 @@ export default function Login() {
   }, [isConnected, address]);
 
   return (
-    <main className="pt-16 p-4 container mx-auto" style={{ maxWidth: 560 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
+    <main className="pt-16 p-4 container mx-auto max-w-lg">
+      <h1 className="text-2xl font-semibold mb-4">
         Wallet Login
       </h1>
 
       {isConnected ? (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="grid gap-3">
           <div>
             <div>Connected</div>
-            <div style={{ fontFamily: "monospace" }}>{address}</div>
+            <div className="font-mono">{address}</div>
             {chain?.name && <div>Network: {chain.name}</div>}
           </div>
           {signed ? (
-            <div style={{ color: "#16a34a" }}>Access granted (signed)</div>
+            <div className="text-green-600">Access granted (signed)</div>
           ) : (
-            <div style={{ color: "#6b7280" }}>
+            <div className="text-gray-500">
               Signature required to access the app.
             </div>
           )}
@@ -69,37 +69,21 @@ export default function Login() {
               // Redirect to login page after disconnect
               navigate("/login");
             }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#fafafa",
-              color: "#111",
-              cursor: "pointer",
-              width: "fit-content",
-            }}
+            className="py-2.5 px-3.5 rounded-[10px] border border-gray-300 bg-gray-50 text-gray-900 cursor-pointer w-fit hover:bg-gray-100 transition-colors"
           >
             Disconnect
           </button>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="grid gap-3">
           <button
             onClick={() => setModalOpen(true)}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "#111",
-              color: "#fff",
-              cursor: "pointer",
-              width: "fit-content",
-            }}
+            className="py-2.5 px-3.5 rounded-[10px] border border-gray-300 bg-gray-900 text-white cursor-pointer w-fit hover:bg-gray-800 transition-colors"
           >
             Connect Wallet
           </button>
           {error && (
-            <div style={{ color: "#b91c1c" }}>Error: {error.message}</div>
+            <div className="text-red-700">Error: {error.message}</div>
           )}
         </div>
       )}
