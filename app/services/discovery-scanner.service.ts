@@ -57,7 +57,7 @@ class DiscoveryScannerService extends EventEmitter {
     this.isScanning = true;
     this.progress = {
       currentBlock: 0,
-      totalBlocks: 10000, // Scan des 10000 derniers blocs
+      totalBlocks: 1000, // Scan des 1000 derniers blocs (réduit pour éviter timeouts)
       dappsDiscovered: 0,
       contractsFound: 0,
       progress: 0,
@@ -68,10 +68,10 @@ class DiscoveryScannerService extends EventEmitter {
       console.log('🔍 Démarrage de la découverte de contrats avec Envio HyperSync...');
       this.emit('progress', this.progress);
 
-      // Utiliser Envio HyperSync pour une découverte ultra-rapide
+      // Utiliser Envio HyperSync pour découvrir les dApps actives
       const discoveredContracts = await this.envioService.discoverContracts({
-        maxBlocks: 10000, // Scanner les 10000 derniers blocs
-        maxContracts: 100, // Limiter à 100 contrats
+        maxBlocks: 1000, // Analyser les 1000 derniers blocs (réduit pour éviter timeouts)
+        maxContracts: 500, // Top 500 contrats les plus actifs
       });
 
       console.log(`✓ ${discoveredContracts.length} contrats découverts`);
@@ -90,14 +90,15 @@ class DiscoveryScannerService extends EventEmitter {
             new Date(contract.timestamp * 1000)
           );
 
-          // Récupérer l'activité du contrat pour déterminer sa popularité
-          const activity = await this.envioService.getContractActivity(contract.address, 5000);
+          // Utiliser directement l'eventCount qu'on a déjà récupéré
+          // Pas besoin de rappeler getContractActivity() - on a déjà les données !
+          const eventCount = (contract as any).eventCount || 0;
 
-          // Si le contrat a des logs, c'est probablement un contrat actif
-          if (activity.isActive && activity.logCount > 0) {
+          // Si le contrat a des événements, c'est probablement un contrat actif
+          if (eventCount > 0) {
             await this.contractDetectorService.analyzeAndGroupContract(
               contract.address,
-              activity.logCount
+              eventCount
             );
           }
 
