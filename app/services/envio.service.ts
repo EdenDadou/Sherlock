@@ -181,6 +181,54 @@ export class EnvioService {
   }
 
   /**
+   * Trouve le déployeur (creator) d'un contrat en analysant sa transaction de création
+   */
+  async findContractCreator(
+    contractAddress: string,
+    fromBlock: number,
+    toBlock: number
+  ): Promise<string> {
+    try {
+      const query: HyperSyncQuery = {
+        from_block: fromBlock,
+        to_block: toBlock,
+        transactions: [
+          {
+            // Pas de filtre 'to' pour attraper les transactions de création (to === null)
+          }
+        ],
+        field_selection: {
+          transaction: ['from', 'to', 'contract_address'],
+        },
+      };
+
+      const response = await this.client.post('/query', query);
+
+      // Chercher la transaction qui a créé ce contrat
+      if (Array.isArray(response.data.data) && response.data.data.length > 0) {
+        const transactions = response.data.data[0].transactions || [];
+        const creationTx = transactions.find(
+          (tx: any) =>
+            tx.contract_address?.toLowerCase() === contractAddress.toLowerCase() ||
+            tx.contractAddress?.toLowerCase() === contractAddress.toLowerCase()
+        );
+
+        if (creationTx && creationTx.from) {
+          console.log(`  ✓ Creator trouvé pour ${contractAddress}: ${creationTx.from}`);
+          return creationTx.from.toLowerCase();
+        }
+      }
+
+      // Si non trouvé, retourner l'adresse du contrat lui-même
+      console.log(`  ⚠️ Creator non trouvé pour ${contractAddress}, utilisation de l'adresse du contrat`);
+      return contractAddress.toLowerCase();
+    } catch (error) {
+      console.error(`Erreur lors de la recherche du creator pour ${contractAddress}:`, error);
+      return contractAddress.toLowerCase(); // Fallback : utiliser l'adresse du contrat
+    }
+  }
+
+  /**
    * Découvre les dApps actives en analysant l'activité des contrats
    * Approche légère et pertinente : on cherche les contrats avec le plus d'événements
    */
@@ -188,9 +236,11 @@ export class EnvioService {
     fromBlock?: number;
     maxBlocks?: number;
     maxContracts?: number;
+    maxDApps?: number;
   }): Promise<Array<{ address: string; deployer: string; timestamp: number; blockNumber: number }>> {
     const maxContracts = options?.maxContracts || 500; // Top 500 par défaut
     const maxBlocks = options?.maxBlocks || 1000; // Réduit à 1000 blocs pour éviter les timeouts
+    const maxDApps = options?.maxDApps || 5; // Par défaut : 5 dApps uniques
 
     console.log('🔍 Récupération de la hauteur actuelle de la blockchain...');
     const currentBlock = await this.getCurrentBlock();
@@ -201,19 +251,43 @@ export class EnvioService {
     // Trouver les contrats les plus actifs
     const activeContracts = await this.findMostActiveContracts(startBlock, currentBlock, maxContracts);
 
-    console.log(`✓ ${activeContracts.length} contrats actifs découverts`);
+    console.log(`✓ ${activeContracts.length} contrats actifs trouvés`);
+    console.log(`🔍 Recherche des deployers pour identifier les dApps (limite: ${maxDApps} dApps)...`);
 
-    // Pour chaque contrat actif, récupérer des infos supplémentaires
-    const contracts = activeContracts.map((contract) => ({
-      address: contract.address,
-      deployer: '0x0000000000000000000000000000000000000000', // On ne connaît pas le déployeur avec cette méthode
-      timestamp: Math.floor(Date.now() / 1000), // Timestamp actuel
-      blockNumber: currentBlock,
-      eventCount: contract.eventCount,
-      eventTypes: contract.eventTypes,
-    }));
+    // Récupérer les deployers et grouper par factory
+    const contracts = [];
+    const uniqueDeployers = new Set<string>();
 
-    console.log(`Découverte terminée: ${contracts.length} dApps actives trouvées`);
+    for (const contract of activeContracts) {
+      // Arrêter si on a déjà trouvé le nombre de dApps demandé
+      if (uniqueDeployers.size >= maxDApps) {
+        console.log(`✓ Limite de ${maxDApps} dApps atteinte, arrêt de la découverte`);
+        break;
+      }
+
+      // Récupérer le vrai deployer
+      const deployer = await this.findContractCreator(contract.address, startBlock, currentBlock);
+
+      // Ajouter le contrat
+      contracts.push({
+        address: contract.address,
+        deployer: deployer,
+        timestamp: Math.floor(Date.now() / 1000),
+        blockNumber: currentBlock,
+        eventCount: contract.eventCount,
+        eventTypes: contract.eventTypes,
+      });
+
+      // Ajouter le deployer aux factories uniques
+      const wasNew = !uniqueDeployers.has(deployer);
+      uniqueDeployers.add(deployer);
+
+      if (wasNew) {
+        console.log(`  🎉 Nouvelle dApp découverte (${uniqueDeployers.size}/${maxDApps}): factory ${deployer.substring(0, 10)}...`);
+      }
+    }
+
+    console.log(`✓ Découverte terminée: ${contracts.length} contrats de ${uniqueDeployers.size} dApps trouvées`);
     return contracts;
   }
 

@@ -6,7 +6,8 @@
       "Bash(test:*)",
       "Bash(rm:*)",
       "Bash(npm run typecheck:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(npx tsx:*)"
     ],
     "deny": [],
     "ask": []

@@ -99,38 +99,46 @@ export class ContractDetectorService {
     holderCount: number
   ): Promise<void> {
     try {
-      // Chercher une dApp existante avec le même créateur
-      const existingDApp = await prisma.dApp.findFirst({
+      const creatorAddress = contract.creatorAddress?.toLowerCase();
+
+      if (!creatorAddress) {
+        console.warn(`Pas de creatorAddress pour le contrat ${contract.address}, skip grouping`);
+        return;
+      }
+
+      // Chercher une dApp existante avec le même créateur (factory)
+      // On cherche directement dans tous les contrats, pas seulement ceux déjà liés
+      const existingContractWithSameCreator = await prisma.contract.findFirst({
         where: {
-          contracts: {
-            some: {
-              creatorAddress: contract.creatorAddress,
-            },
-          },
+          creatorAddress: creatorAddress,
+          dappId: { not: null },
+        },
+        include: {
+          dapp: true,
         },
       });
 
-      if (existingDApp) {
+      if (existingContractWithSameCreator && existingContractWithSameCreator.dapp) {
         // Associer le contrat à la dApp existante
         await prisma.contract.update({
           where: { id: contract.id },
-          data: { dappId: existingDApp.id },
+          data: { dappId: existingContractWithSameCreator.dapp.id },
         });
-        console.log(`Contrat ${contract.address} associé à la dApp existante ${existingDApp.id}`);
+        console.log(`Contrat ${contract.address} associé à la dApp existante ${existingContractWithSameCreator.dapp.id} (factory: ${creatorAddress.substring(0, 10)}...)`);
       } else {
-        // Créer une nouvelle dApp
+        // Créer une nouvelle dApp pour cette factory
         const category = this.determineCategory(contract.type);
         const dapp = await prisma.dApp.create({
           data: {
-            name: `DApp ${contract.address.substring(0, 10)}`,
-            description: `DApp découverte automatiquement via le contrat ${contract.address}`,
+            name: `DApp Factory ${creatorAddress.substring(0, 10)}`,
+            description: `DApp découverte automatiquement via factory ${creatorAddress}. Contrats déployés par cette factory.`,
             category,
             contracts: {
               connect: { id: contract.id },
             },
           },
         });
-        console.log(`✓ Nouvelle dApp créée: ${dapp.id} (${category})`);
+        console.log(`✓ Nouvelle dApp créée: ${dapp.id} (factory: ${creatorAddress.substring(0, 10)}..., ${category})`);
       }
     } catch (error) {
       console.error('Erreur lors de la création/mise à jour de la dApp:', error);

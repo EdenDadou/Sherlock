@@ -31,6 +31,7 @@ class DiscoveryScannerService extends EventEmitter {
   private isScanning = false;
   private envioService: EnvioService;
   private contractDetectorService: ContractDetectorService;
+  private emittedDAppIds = new Set<string>(); // Suivre les dApps déjà émises
   private progress: ScanProgress = {
     currentBlock: 0,
     totalBlocks: 10000,
@@ -55,6 +56,7 @@ class DiscoveryScannerService extends EventEmitter {
     }
 
     this.isScanning = true;
+    this.emittedDAppIds.clear(); // Réinitialiser le suivi des dApps émises
     this.progress = {
       currentBlock: 0,
       totalBlocks: 1000, // Scan des 1000 derniers blocs (réduit pour éviter timeouts)
@@ -72,6 +74,7 @@ class DiscoveryScannerService extends EventEmitter {
       const discoveredContracts = await this.envioService.discoverContracts({
         maxBlocks: 1000, // Analyser les 1000 derniers blocs (réduit pour éviter timeouts)
         maxContracts: 500, // Top 500 contrats les plus actifs
+        maxDApps: 5, // Limite à 5 dApps uniques
       });
 
       console.log(`✓ ${discoveredContracts.length} contrats découverts`);
@@ -112,15 +115,19 @@ class DiscoveryScannerService extends EventEmitter {
             orderBy: { createdAt: 'desc' }
           });
 
-          // Émettre les événements pour les nouvelles dApps
+          // Émettre les événements UNIQUEMENT pour les NOUVELLES dApps (pas encore émises)
           for (const dapp of recentDApps) {
-            const discoveredDApp = await this.formatDiscoveredDApp(dapp.id);
-            this.emit('dapp-discovered', discoveredDApp);
+            if (!this.emittedDAppIds.has(dapp.id)) {
+              const discoveredDApp = await this.formatDiscoveredDApp(dapp.id);
+              this.emit('dapp-discovered', discoveredDApp);
+              this.emittedDAppIds.add(dapp.id); // Marquer comme émise
+            }
           }
 
           // Mettre à jour la progression
-          this.progress.currentBlock++;
-          this.progress.progress = Math.round((this.progress.currentBlock / discoveredContracts.length) * 100);
+          const contractsProcessed = discoveredContracts.indexOf(contract) + 1;
+          this.progress.currentBlock = contractsProcessed; // Utilise le même champ mais change la sémantique
+          this.progress.progress = Math.round((contractsProcessed / discoveredContracts.length) * 100);
           this.emit('progress', this.progress);
 
         } catch (error) {

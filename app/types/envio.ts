@@ -19,6 +19,7 @@ export interface EnvioTransaction {
   gasPrice?: string;
   status?: number;
   contractAddress?: string | null;
+  contract_address?: string | null; // Snake_case version from Envio API
 }
 
 export interface EnvioBlock {
