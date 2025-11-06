@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { consumeNonce } from "../lib/server/nonceStore";
+import { consumeNonce } from "../../../lib/server/nonceStore";
 import { recoverMessageAddress } from "viem";
 
 interface VerifyPayload {

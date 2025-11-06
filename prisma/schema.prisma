@@ -1,0 +1,117 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Enum for dApp categories
+enum DAppCategory {
+  DEFI
+  NFT
+  GAMEFI
+  SOCIAL
+  BRIDGE
+  INFRA
+  UNKNOWN
+}
+
+// Enum for contract types
+enum ContractType {
+  ERC20
+  ERC721
+  ERC1155
+  CUSTOM
+  UNKNOWN
+}
+
+// Enum for detection source
+enum DetectionSource {
+  AUTO
+  MANUAL
+}
+
+// Enum for dApp status
+enum DAppStatus {
+  ACTIVE
+  DORMANT
+  INACTIVE
+}
+
+// Main dApps table
+model DApp {
+  id              String          @id @default(cuid())
+  name            String?
+  description     String?
+  category        DAppCategory    @default(UNKNOWN)
+  status          DAppStatus      @default(ACTIVE)
+  detectionSource DetectionSource @default(AUTO)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  contracts       Contract[]
+  activities      Activity[]
+
+  @@map("dapps")
+}
+
+// Contracts table
+model Contract {
+  id              String       @id @default(cuid())
+  address         String       @unique
+  bytecodeHash    String?
+  type            ContractType @default(UNKNOWN)
+  deploymentDate  DateTime?
+  creatorAddress  String?
+  transactionHash String?
+  blockNumber     BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  dappId          String?
+  dapp            DApp?        @relation(fields: [dappId], references: [id], onDelete: SetNull)
+
+  @@index([address])
+  @@index([dappId])
+  @@index([deploymentDate])
+  @@map("contracts")
+}
+
+// Activity tracking table
+model Activity {
+  id          String   @id @default(cuid())
+  date        DateTime @default(now())
+  txCount     Int      @default(0)
+  userCount   Int      @default(0)
+  eventCount  Int      @default(0)
+  gasUsed     BigInt   @default(0)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  dappId      String
+  dapp        DApp     @relation(fields: [dappId], references: [id], onDelete: Cascade)
+
+  @@unique([dappId, date])
+  @@index([dappId])
+  @@index([date])
+  @@map("activities")
+}
+
+// Block scanning state
+model BlockScanState {
+  id             String   @id @default(cuid())
+  lastBlockScanned BigInt @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@map("block_scan_state")
+}

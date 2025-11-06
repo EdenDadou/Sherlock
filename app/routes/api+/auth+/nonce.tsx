@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { createNonce } from "../lib/server/nonceStore";
+import { createNonce } from "../../../lib/server/nonceStore";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") {
