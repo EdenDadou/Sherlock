@@ -16,11 +16,16 @@ datasource db {
 // Enum for dApp categories
 enum DAppCategory {
   DEFI
+  DEX
+  LENDING
   NFT
+  NFT_MARKETPLACE
   GAMEFI
   SOCIAL
   BRIDGE
   INFRA
+  GOVERNANCE
+  TOKEN
   UNKNOWN
 }
 
@@ -51,9 +56,24 @@ model DApp {
   id              String          @id @default(cuid())
   name            String?
   description     String?
+  logoUrl         String?
+  symbol          String?
+  website         String?
   category        DAppCategory    @default(UNKNOWN)
   status          DAppStatus      @default(ACTIVE)
   detectionSource DetectionSource @default(AUTO)
+
+  // Quality scoring
+  qualityScore    Float           @default(0) // Score de qualité (0-10)
+  activityScore   Float           @default(0)
+  diversityScore  Float           @default(0)
+  ageScore        Float           @default(0)
+
+  // Analytics
+  totalTxCount    Int             @default(0)
+  uniqueUsers     Int             @default(0)
+  tvlUsd          Float           @default(0) // Total Value Locked in USD
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -74,6 +94,15 @@ model Contract {
   creatorAddress  String?
   transactionHash String?
   blockNumber     BigInt?
+
+  // Metadata
+  name            String?
+  symbol          String?
+
+  // Activity metrics
+  eventCount      Int          @default(0) // Nombre d'événements émis
+  txCount         Int          @default(0) // Nombre de transactions
+
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -84,6 +113,7 @@ model Contract {
   @@index([address])
   @@index([dappId])
   @@index([deploymentDate])
+  @@index([eventCount])
   @@map("contracts")
 }
 
@@ -114,4 +144,35 @@ model BlockScanState {
   updatedAt      DateTime @updatedAt
 
   @@map("block_scan_state")
+}
+
+// Cache for protocol data
+model ProtocolCache {
+  id          String   @id @default(cuid())
+  key         String   @unique // 'github_protocols_testnet' or 'github_protocols_mainnet'
+  data        String   // JSON stringified data
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@index([expiresAt])
+  @@map("protocol_cache")
+}
+
+// Cron job execution tracking
+model CronJob {
+  id          String   @id @default(cuid())
+  name        String   @unique // 'sync_github_protocols', 'enrich_protocols'
+  lastRun     DateTime?
+  nextRun     DateTime?
+  status      String   @default("idle") // 'idle', 'running', 'failed'
+  error       String?
+  runCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([nextRun])
+  @@map("cron_jobs")
 }

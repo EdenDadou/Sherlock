@@ -7,7 +7,17 @@
       "Bash(rm:*)",
       "Bash(npm run typecheck:*)",
       "Bash(tree:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(cat:*)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"Oui\" npx prisma migrate reset:*)",
+      "Bash(npm run verify:*)",
+      "Bash(npm run scan:blockchain:*)",
+      "Bash(npm pkg set:*)",
+      "Bash(npm run enrich:protocols:*)",
+      "Bash(timeout 60 npm run enrich:protocols:*)",
+      "Bash(npm run cron:init:*)",
+      "Bash(npm run cron:sync:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

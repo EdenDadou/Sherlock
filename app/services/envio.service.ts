@@ -58,7 +58,7 @@ export class EnvioService {
           }
         ],
         field_selection: {
-          log: ['address', 'topics', 'block_number'],
+          log: ['address', 'topic0', 'topic1', 'topic2', 'topic3', 'block_number'],
         },
       };
 
@@ -80,11 +80,8 @@ export class EnvioService {
         const address = log.address?.toLowerCase();
         if (!address) continue;
 
-        // Le premier topic est la signature de l'événement
-        // topics peut être un tableau ou undefined
-        const eventSignature = Array.isArray(log.topics) && log.topics.length > 0
-          ? log.topics[0]
-          : undefined;
+        // Le premier topic est la signature de l'événement (topic0)
+        const eventSignature = log.topic0 || undefined;
 
         if (!contractActivity.has(address)) {
           contractActivity.set(address, { count: 0, eventTypes: new Set() });
@@ -293,10 +290,10 @@ export class EnvioService {
 
   /**
    * Classifie un contrat selon ses événements
-   * Retourne le type de dApp le plus probable
+   * Retourne le type de dApp le plus probable avec une catégorie Prisma valide
    */
   classifyContractByEvents(eventTypes: string[]): {
-    type: string;
+    type: 'DEFI' | 'DEX' | 'LENDING' | 'NFT' | 'NFT_MARKETPLACE' | 'GAMEFI' | 'SOCIAL' | 'BRIDGE' | 'INFRA' | 'GOVERNANCE' | 'TOKEN' | 'UNKNOWN';
     confidence: number;
   } {
     // Signatures d'événements typiques (keccak256 des signatures)
@@ -305,60 +302,116 @@ export class EnvioService {
       Transfer: '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
       Approval: '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925',
 
-      // DEX / AMM
+      // DEX / AMM (Uniswap V2/V3 style)
       Swap: '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822',
       Sync: '0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1',
       Mint: '0x4c209b5fc8ad50758f13e2e1088ba56a560dff690a1c6fef26394f4c03821c4f',
       Burn: '0xdccd412f0b1252819cb1fd330b93224ca42612892bb3f4f789976e6d81936496',
+      PairCreated: '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9',
 
       // NFT ERC721/ERC1155
       TransferSingle: '0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62',
       TransferBatch: '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb',
 
-      // DeFi
+      // DeFi Lending (Aave, Compound style)
       Deposit: '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c',
       Withdraw: '0x884edad9ce6fa2440d8a54cc123490eb96d2768479d49ff9c7366125a9424364',
+      Borrow: '0x13ed6866d4e1ee6da46f845c46d7e54120883d75c5ea9a2dacc1c4ca8984ab80',
+      Repay: '0x1a2a22cb034d26d1854bdc6666a5b91fe25efbbb5dcad3b0355478d6f5c362a1',
       Stake: '0x9e71bc8eea02a63969f509818f2dafb9254532904319f9dbda79b67bd34a5f3d',
 
       // Governance
       ProposalCreated: '0x7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0',
       VoteCast: '0xb8e138887d0aa13bab447e82de9d5c1777041ecd21ca36ba824ff1e6c07ddda4',
+
+      // Bridge
+      TokensLocked: '0x9b1bfa7fa9ee420a16e124f794c35ac9f90472acc99140eb2f6447c714cad8eb',
+      TokensUnlocked: '0x0f0bc5b519dbd37e22a6a9ca6e4d8eb3e1f3e8e7f73e3f8e0f6c5f4e3f2f1f0e',
+
+      // NFT Marketplace
+      OrderFilled: '0x9d9af8e38d66c62e2c12f0225249fd9d721c54b83f48d9352c97c6cacdcb6f31',
+      ItemSold: '0x2e95b6c8b1e6b5c3f5a7f9b8c6d4e2f3b5c7d8e9f1a2b3c4d5e6f7a8b9c0d1e2',
     };
 
+    // Créer un Set qui contient à la fois les signatures et les noms d'événements
     const eventSignatureSet = new Set(eventTypes);
+    const eventNameSet = new Set<string>();
+
+    // Pour chaque type d'événement fourni, vérifier s'il s'agit d'une signature (0x...) ou d'un nom
+    eventTypes.forEach(eventType => {
+      if (eventType.startsWith('0x')) {
+        // C'est une signature, trouver le nom correspondant
+        const eventName = Object.entries(EVENT_SIGNATURES).find(([, sig]) => sig === eventType)?.[0];
+        if (eventName) {
+          eventNameSet.add(eventName);
+        }
+      } else {
+        // C'est déjà un nom
+        eventNameSet.add(eventType);
+      }
+    });
 
     // Scoring par catégorie
     let scores = {
       DEX: 0,
+      LENDING: 0,
       TOKEN: 0,
       NFT: 0,
-      DEFI: 0,
+      NFT_MARKETPLACE: 0,
       GOVERNANCE: 0,
+      BRIDGE: 0,
+      DEFI: 0,
       UNKNOWN: 0,
     };
 
-    // DEX patterns
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Swap)) scores.DEX += 10;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Sync)) scores.DEX += 5;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Mint) && eventSignatureSet.has(EVENT_SIGNATURES.Burn))
-      scores.DEX += 5;
+    // DEX patterns (Uniswap, SushiSwap, etc.)
+    if (eventNameSet.has('Swap') || eventSignatureSet.has(EVENT_SIGNATURES.Swap)) scores.DEX += 15;
+    if (eventNameSet.has('Sync') || eventSignatureSet.has(EVENT_SIGNATURES.Sync)) scores.DEX += 10;
+    if (eventNameSet.has('PairCreated') || eventSignatureSet.has(EVENT_SIGNATURES.PairCreated)) scores.DEX += 12;
+    if ((eventNameSet.has('Mint') || eventSignatureSet.has(EVENT_SIGNATURES.Mint)) &&
+        (eventNameSet.has('Burn') || eventSignatureSet.has(EVENT_SIGNATURES.Burn))) {
+      scores.DEX += 8;
+    }
 
-    // Token patterns
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Transfer)) scores.TOKEN += 10;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Approval)) scores.TOKEN += 5;
+    // Lending patterns (Aave, Compound, etc.)
+    if (eventNameSet.has('Borrow') || eventSignatureSet.has(EVENT_SIGNATURES.Borrow)) scores.LENDING += 15;
+    if (eventNameSet.has('Repay') || eventSignatureSet.has(EVENT_SIGNATURES.Repay)) scores.LENDING += 15;
+    if ((eventNameSet.has('Deposit') || eventSignatureSet.has(EVENT_SIGNATURES.Deposit)) &&
+        (eventNameSet.has('Withdraw') || eventSignatureSet.has(EVENT_SIGNATURES.Withdraw))) {
+      scores.LENDING += 10;
+    }
 
     // NFT patterns
-    if (eventSignatureSet.has(EVENT_SIGNATURES.TransferSingle)) scores.NFT += 10;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.TransferBatch)) scores.NFT += 10;
+    if (eventNameSet.has('TransferSingle') || eventSignatureSet.has(EVENT_SIGNATURES.TransferSingle)) scores.NFT += 15;
+    if (eventNameSet.has('TransferBatch') || eventSignatureSet.has(EVENT_SIGNATURES.TransferBatch)) scores.NFT += 15;
 
-    // DeFi patterns
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Deposit)) scores.DEFI += 7;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Withdraw)) scores.DEFI += 7;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.Stake)) scores.DEFI += 8;
+    // NFT Marketplace patterns
+    if (eventNameSet.has('OrderFilled') || eventSignatureSet.has(EVENT_SIGNATURES.OrderFilled)) scores.NFT_MARKETPLACE += 15;
+    if (eventNameSet.has('ItemSold') || eventSignatureSet.has(EVENT_SIGNATURES.ItemSold)) scores.NFT_MARKETPLACE += 15;
+    if ((eventNameSet.has('Transfer') || eventSignatureSet.has(EVENT_SIGNATURES.Transfer)) &&
+        ((eventNameSet.has('TransferSingle') || eventSignatureSet.has(EVENT_SIGNATURES.TransferSingle)) ||
+         (eventNameSet.has('TransferBatch') || eventSignatureSet.has(EVENT_SIGNATURES.TransferBatch)))) {
+      scores.NFT_MARKETPLACE += 8;
+    }
+
+    // Token patterns (simple ERC20)
+    if (eventNameSet.has('Transfer') || eventSignatureSet.has(EVENT_SIGNATURES.Transfer)) scores.TOKEN += 5;
+    if (eventNameSet.has('Approval') || eventSignatureSet.has(EVENT_SIGNATURES.Approval)) scores.TOKEN += 3;
+
+    // DeFi générique (staking, farming, etc.)
+    if (eventNameSet.has('Stake') || eventSignatureSet.has(EVENT_SIGNATURES.Stake)) scores.DEFI += 12;
+    if ((eventNameSet.has('Deposit') || eventSignatureSet.has(EVENT_SIGNATURES.Deposit)) &&
+        !(eventNameSet.has('Borrow') || eventSignatureSet.has(EVENT_SIGNATURES.Borrow))) {
+      scores.DEFI += 8;
+    }
 
     // Governance patterns
-    if (eventSignatureSet.has(EVENT_SIGNATURES.ProposalCreated)) scores.GOVERNANCE += 10;
-    if (eventSignatureSet.has(EVENT_SIGNATURES.VoteCast)) scores.GOVERNANCE += 10;
+    if (eventNameSet.has('ProposalCreated') || eventSignatureSet.has(EVENT_SIGNATURES.ProposalCreated)) scores.GOVERNANCE += 15;
+    if (eventNameSet.has('VoteCast') || eventSignatureSet.has(EVENT_SIGNATURES.VoteCast)) scores.GOVERNANCE += 15;
+
+    // Bridge patterns
+    if (eventNameSet.has('TokensLocked') || eventSignatureSet.has(EVENT_SIGNATURES.TokensLocked)) scores.BRIDGE += 15;
+    if (eventNameSet.has('TokensUnlocked') || eventSignatureSet.has(EVENT_SIGNATURES.TokensUnlocked)) scores.BRIDGE += 15;
 
     // Si aucun pattern reconnu
     if (Object.values(scores).every((s) => s === 0)) {
@@ -371,8 +424,8 @@ export class EnvioService {
     , { type: 'UNKNOWN', score: 0 });
 
     return {
-      type: bestMatch.type,
-      confidence: Math.min(bestMatch.score / 10, 1), // Normaliser entre 0 et 1
+      type: bestMatch.type as any,
+      confidence: Math.min(bestMatch.score / 15, 1), // Normaliser entre 0 et 1
     };
   }
 
@@ -394,7 +447,7 @@ export class EnvioService {
           },
         ],
         field_selection: {
-          log: ['address', 'topics', 'data', 'blockNumber', 'transactionHash', 'logIndex'],
+          log: ['address', 'topic0', 'topic1', 'topic2', 'topic3', 'data', 'block_number', 'transaction_hash', 'log_index'],
         },
       };
 
