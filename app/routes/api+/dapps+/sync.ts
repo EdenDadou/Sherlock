@@ -92,9 +92,10 @@ async function fetchGitHubProtocols(): Promise<GitHubProtocol[]> {
           : [];
 
         // Extract category from categories array
+        // Keep the full category string to be processed by mapCategory()
         const category =
           data.categories && data.categories.length > 0
-            ? data.categories[0].split("::")[0]
+            ? data.categories[0]
             : undefined;
 
         // Transform to GitHubProtocol format
@@ -346,9 +347,8 @@ export async function action({ request }: ActionFunctionArgs) {
           enrichment.WEB || enrichment.website || protocol.website || null,
         github: enrichment.github || protocol.github || null,
         twitter,
-        category: mapCategory(
-          protocol.category || enrichment.TAGS || enrichment.category
-        ) as any,
+        // ONLY use category from GitHub protocols, not Google Sheets
+        category: mapCategory(protocol.category) as any,
         githubId,
       };
 
@@ -470,6 +470,14 @@ export async function action({ request }: ActionFunctionArgs) {
         `📊 ${enrichedCount} dApps enriched with data from Google Sheets`
       );
     }
+
+    // Trigger async Twitter scraping (fire and forget)
+    console.log("\n🐦 Triggering async Twitter followers scraping...");
+    fetch("http://localhost:5173/api/dapps/twitter-sync", {
+      method: "POST",
+    }).catch((err) => {
+      console.warn("⚠️  Failed to trigger Twitter sync:", err);
+    });
 
     return Response.json({
       success: true,

@@ -10,6 +10,7 @@ interface DappCardProps {
     website: string | null;
     github: string | null;
     twitter: string | null;
+    twitterFollowers: number | null;
     contractCount: number;
     totalTxCount: number;
     uniqueUsers: number;
@@ -34,39 +35,48 @@ export function DappCard({ dapp, index }: DappCardProps) {
   }
 
   const getCategoryColor = (category: string) => {
+    // Get base category (before underscore) for coloring
+    const baseCategory = category.split("_")[0];
     const colors: Record<string, string> = {
-      DEX: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-      LENDING: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+      AI: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+      CEFI: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+      CONSUMER: "bg-pink-500/20 text-pink-300 border-pink-500/30",
       DEFI: "bg-green-500/20 text-green-300 border-green-500/30",
-      NFT: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-      NFT_MARKETPLACE: "bg-violet-500/20 text-violet-300 border-violet-500/30",
-      GAMEFI: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
-      SOCIAL: "bg-pink-500/20 text-pink-300 border-pink-500/30",
-      BRIDGE: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+      DEPIN: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+      DESCI: "bg-teal-500/20 text-teal-300 border-teal-500/30",
+      GAMING: "bg-violet-500/20 text-violet-300 border-violet-500/30",
       GOVERNANCE: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-      TOKEN: "bg-amber-500/20 text-amber-300 border-amber-500/30",
       INFRA: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+      NFT: "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30",
+      PAYMENTS: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
       UNKNOWN: "bg-gray-500/20 text-gray-400 border-gray-500/30",
     };
-    return colors[category] || colors.UNKNOWN;
+    return colors[baseCategory] || colors.UNKNOWN;
   };
 
   const getCategoryLabel = (category: string) => {
-    const labels: Record<string, string> = {
-      DEX: "DEX",
-      LENDING: "Lending",
-      DEFI: "DeFi",
-      NFT: "NFT",
-      NFT_MARKETPLACE: "NFT Marketplace",
-      GAMEFI: "GameFi",
-      SOCIAL: "Social",
-      BRIDGE: "Bridge",
-      GOVERNANCE: "Governance",
-      TOKEN: "Token",
-      INFRA: "Infrastructure",
-      UNKNOWN: "Unknown",
-    };
-    return labels[category] || category;
+    // Convert DEFI_DEX to "DeFi - DEX"
+    if (category === "UNKNOWN") return "Unknown";
+
+    const parts = category.split("_");
+    const formatted = parts
+      .map((part, index) => {
+        // Capitalize first letter, lowercase rest
+        if (index === 0) {
+          // Main category: AI, DeFi, NFT, etc.
+          if (part === "DEFI") return "DeFi";
+          if (part === "CEFI") return "CeFi";
+          if (part === "DEPIN") return "DePIN";
+          if (part === "DESCI") return "DeSci";
+          if (part === "NFT") return "NFT";
+          return part.charAt(0) + part.slice(1).toLowerCase();
+        }
+        // Sub-category
+        return part.charAt(0) + part.slice(1).toLowerCase();
+      })
+      .join(" - ");
+
+    return formatted;
   };
 
   const getQualityScoreColor = (score: number) => {
@@ -189,6 +199,31 @@ export function DappCard({ dapp, index }: DappCardProps) {
               </div>
             )}
 
+            {/* Twitter Followers - Prominent Display */}
+            {dapp.twitterFollowers && dapp.twitterFollowers > 0 && (
+              <div className="mb-3">
+                <div className="inline-flex items-center gap-2 bg-sky-500/10 border border-sky-500/30 rounded-lg px-3 py-2">
+                  <svg
+                    className="w-4 h-4 text-sky-400"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-bold text-sky-300">
+                      {dapp.twitterFollowers >= 1000000
+                        ? `${(dapp.twitterFollowers / 1000000).toFixed(1)}M`
+                        : dapp.twitterFollowers >= 1000
+                          ? `${(dapp.twitterFollowers / 1000).toFixed(1)}K`
+                          : dapp.twitterFollowers.toLocaleString()}
+                    </span>
+                    <span className="text-xs text-sky-400/70">followers</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Stats */}
             {(dapp.totalTxCount > 0 || dapp.uniqueUsers > 0) && (
               <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
@@ -274,7 +309,7 @@ export function DappCard({ dapp, index }: DappCardProps) {
                     >
                       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                     </svg>
-                    Twitter
+                    <span>Twitter</span>
                   </a>
                 )}
               </div>

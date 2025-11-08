@@ -34,6 +34,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       website: dapp.website,
       github: dapp.github,
       twitter: dapp.twitter,
+      twitterFollowers: dapp.twitterFollowers,
       contractCount: dapp.contracts.length,
       contracts: dapp.contracts,
       totalTxCount: dapp.totalTxCount,

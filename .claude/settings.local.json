@@ -21,7 +21,8 @@
       "Bash(npm run dev:*)",
       "Bash(mkdir:*)",
       "Bash(mv:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

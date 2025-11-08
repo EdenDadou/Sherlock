@@ -12,6 +12,7 @@ interface DApp {
   website: string | null;
   github: string | null;
   twitter: string | null;
+  twitterFollowers: number | null;
   contractCount: number;
   contracts?: any[];
   totalTxCount: number;
@@ -38,13 +39,16 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   const [dapps, setDapps] = useState<DApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   /**
    * Load dApps from database
    */
-  const loadDapps = async () => {
+  const loadDapps = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
 
       const response = await fetch("/api/dapps");
@@ -62,7 +66,9 @@ export function DappsProvider({ children }: { children: ReactNode }) {
       console.error("Error loading dApps:", err);
       setError(err instanceof Error ? err.message : "Failed to load dApps");
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -86,6 +92,8 @@ export function DappsProvider({ children }: { children: ReactNode }) {
       if (data.success) {
         // Reload dApps after sync
         await loadDapps();
+        // Enable auto-refresh to see Twitter followers updates
+        setAutoRefresh(true);
       } else {
         throw new Error(data.error || "Failed to sync dApps");
       }
@@ -101,6 +109,27 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadDapps();
   }, []);
+
+  // Auto-refresh every 10 seconds when enabled (for Twitter followers updates)
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      console.log("🔄 Auto-refreshing dApps for Twitter followers updates...");
+      loadDapps(true); // Silent refresh
+    }, 10000); // Every 10 seconds
+
+    // Stop auto-refresh after 5 minutes (Twitter scraping should be done)
+    const timeout = setTimeout(() => {
+      console.log("⏹️ Stopping auto-refresh");
+      setAutoRefresh(false);
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [autoRefresh]);
 
   return (
     <DappsContext.Provider value={{ dapps, loading, error, syncDapps }}>

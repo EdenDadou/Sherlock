@@ -176,6 +176,9 @@ model DApp {
   // GitHub source tracking
   githubId        String?         @unique // ID from GitHub protocols repo
 
+  // Social metrics
+  twitterFollowers Int?           // Number of Twitter/X followers
+
   // Quality scoring
   qualityScore    Float           @default(0) // Score de qualité (0-10)
   activityScore   Float           @default(0)

@@ -29,6 +29,7 @@
     "node-cron": "^4.2.1",
     "papaparse": "^5.5.3",
     "prisma": "^6.19.0",
+    "puppeteer": "^24.29.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router": "^7.9.2",
