@@ -1,52 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import { useFetcher } from "react-router";
-
-interface ScanProgress {
-  currentBlock: number;
-  totalBlocks: number;
-  dappsDiscovered: number;
-  contractsFound: number;
-  progress: number;
-  status: "idle" | "scanning" | "completed" | "error";
-  error?: string;
-  currentStep?: string;
-}
-
-interface DiscoveredDApp {
-  id?: string;
-  name: string;
-  description?: string;
-  logoUrl?: string | null;
-  logo?: string | null;
-  banner?: string | null;
-  symbol?: string | null;
-  category: string;
-  website?: string;
-  github?: string;
-  twitter?: string;
-  contractCount: number;
-  contracts?: Array<{
-    address: string;
-    type: string;
-    deploymentDate?: Date;
-  }>;
-  discoveredAt?: Date;
-  // Stats from enrichment
-  stats?: {
-    totalTxCount: number;
-    totalEventCount: number;
-    uniqueUsers: number;
-    activityScore: number;
-    contractCount: number;
-    firstActivity: Date | null;
-    lastActivity: Date | null;
-  };
-  // Legacy quality scoring (for backward compatibility)
-  qualityScore?: number;
-  activityScore?: number;
-  diversityScore?: number;
-  ageScore?: number;
-}
+import { useState } from "react";
+import { useDappsContext } from "~/contexts/DappsContext";
 
 interface DiscoveryModalProps {
   isOpen: boolean;
@@ -54,216 +7,18 @@ interface DiscoveryModalProps {
 }
 
 export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
-  const fetcher = useFetcher();
-  const [progress, setProgress] = useState<ScanProgress>({
-    currentBlock: 0,
-    totalBlocks: 40000,
-    dappsDiscovered: 0,
-    contractsFound: 0,
-    progress: 0,
-    status: "idle",
-  });
-  const [discoveredDApps, setDiscoveredDApps] = useState<DiscoveredDApp[]>([]);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const { dapps, loading: dappsLoading, error: dappsError, syncDapps } = useDappsContext();
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Charger les dApps en cache au démarrage
-    loadCachedDapps();
-
-    // Connexion SSE pour recevoir les mises à jour en temps réel
-    const eventSource = new EventSource("/api/discovery/events");
-    eventSourceRef.current = eventSource;
-
-    eventSource.addEventListener("progress", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setProgress(data);
-    });
-
-    eventSource.addEventListener("dapp-discovered", (e: MessageEvent) => {
-      const dapp = JSON.parse(e.data);
-      setDiscoveredDApps((prev) => [dapp, ...prev]);
-    });
-
-    eventSource.addEventListener("completed", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setProgress(data);
-    });
-
-    eventSource.addEventListener("error", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setProgress(data);
-    });
-
-    eventSource.addEventListener("stopped", (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setProgress(data);
-    });
-
-    eventSource.onerror = () => {
-      console.error("EventSource error");
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  }, [isOpen]);
-
-  const loadCachedDapps = async () => {
+  const handleSync = async () => {
+    setSyncing(true);
     try {
-      const response = await fetch("/api/dapps/cached");
-      const result = await response.json();
-
-      if (result.success && result.data.length > 0) {
-        setDiscoveredDApps(result.data);
-        setProgress({
-          currentBlock: 0,
-          totalBlocks: 0,
-          dappsDiscovered: result.count,
-          contractsFound: result.data.reduce(
-            (sum: number, p: DiscoveredDApp) => sum + p.contractCount,
-            0
-          ),
-          progress: 100,
-          status: "completed",
-        });
-      }
+      await syncDapps();
     } catch (error) {
-      console.error("Erreur lors du chargement des dApps en cache:", error);
+      console.error("Error syncing dApps:", error);
+    } finally {
+      setSyncing(false);
     }
-  };
-
-  const handleStartScan = async () => {
-    setDiscoveredDApps([]);
-    setProgress({
-      currentBlock: 0,
-      totalBlocks: 0,
-      dappsDiscovered: 0,
-      contractsFound: 0,
-      progress: 0,
-      status: "scanning",
-    });
-
-    try {
-      const eventSource = new EventSource(
-        "/api/discovery/enrich-stream?network=testnet"
-      );
-      let totalProtocols = 0;
-      let enrichedCount = 0;
-
-      eventSource.addEventListener("started", (e: MessageEvent) => {
-        const data = JSON.parse(e.data);
-        console.log("🚀 Enrichissement démarré:", data.network);
-      });
-
-      eventSource.addEventListener("protocols-loaded", (e: MessageEvent) => {
-        const data = JSON.parse(e.data);
-        totalProtocols = data.total;
-        setProgress((prev) => ({
-          ...prev,
-          totalBlocks: data.total,
-        }));
-      });
-
-      eventSource.addEventListener("progress", (e: MessageEvent) => {
-        const data = JSON.parse(e.data);
-        setProgress((prev) => ({
-          ...prev,
-          currentBlock: data.current || 0,
-          totalBlocks: totalProtocols,
-          progress: data.progress || 0,
-          currentStep: data.step || prev.currentStep,
-          status: "scanning",
-        }));
-      });
-
-      eventSource.addEventListener("dapp-enriched", (e: MessageEvent) => {
-        const dapp = JSON.parse(e.data);
-        enrichedCount++;
-
-        setDiscoveredDApps((prev) => [
-          ...prev,
-          {
-            name: dapp.name,
-            description: dapp.description,
-            category: dapp.category || "UNKNOWN",
-            website: dapp.website,
-            github: dapp.github,
-            twitter: dapp.twitter,
-            logo: dapp.logo,
-            logoUrl: dapp.logo,
-            banner: dapp.banner,
-            contractCount: dapp.contractCount,
-            stats: dapp.stats,
-          },
-        ]);
-
-        setProgress((prev) => ({
-          ...prev,
-          dappsDiscovered: enrichedCount,
-          contractsFound: prev.contractsFound + dapp.contractCount,
-        }));
-      });
-
-      eventSource.addEventListener("completed", (e: MessageEvent) => {
-        const data = JSON.parse(e.data);
-        setProgress((prev) => ({
-          ...prev,
-          progress: 100,
-          status: "completed",
-        }));
-        eventSource.close();
-      });
-
-      eventSource.addEventListener("error", (e: MessageEvent) => {
-        const data = e.data ? JSON.parse(e.data) : {};
-        setProgress({
-          currentBlock: 0,
-          totalBlocks: 0,
-          dappsDiscovered: 0,
-          contractsFound: 0,
-          progress: 0,
-          status: "error",
-          error: data.message || "Erreur lors de l'enrichissement",
-        });
-        eventSource.close();
-      });
-
-      eventSource.onerror = () => {
-        console.error("EventSource error");
-        eventSource.close();
-      };
-    } catch (error) {
-      setProgress({
-        currentBlock: 0,
-        totalBlocks: 0,
-        dappsDiscovered: 0,
-        contractsFound: 0,
-        progress: 0,
-        status: "error",
-        error:
-          error instanceof Error
-            ? error.message
-            : "Erreur lors de l'enrichissement",
-      });
-    }
-  };
-
-  const handleStopScan = () => {
-    const formData = new FormData();
-    formData.append("action", "stop");
-    fetcher.submit(formData, { method: "post", action: "/api/discovery/scan" });
-  };
-
-  const handleClose = () => {
-    if (progress.status === "scanning") {
-      handleStopScan();
-    }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -322,141 +77,76 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-lg max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-700">
         {/* Header */}
-        <div className="p-4 border-gray-700 flex items-center justify-between">
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-white mb-1">
               Découverte de dApps
             </h2>
             <p className="text-gray-400 text-sm">
-              Enrichissement des protocoles Monad avec stats d'activité Envio
+              Protocoles Monad enrichis depuis GitHub et Google Sheets
             </p>
           </div>
-          <div className="flex gap-2">
-            {progress.status === "idle" ||
-            progress.status === "completed" ||
-            progress.status === "error" ? (
-              <>
-                <button
-                  onClick={handleStartScan}
-                  disabled={fetcher.state !== "idle"}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {progress.status === "completed"
-                    ? "Rafraîchir les données"
-                    : "Enrichir les protocoles"}
-                </button>
-                <button
-                  onClick={loadCachedDapps}
-                  disabled={fetcher.state !== "idle"}
-                  className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Recharger depuis le cache
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={handleStopScan}
-                disabled={fetcher.state !== "idle"}
-                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Arrêter le scan
-              </button>
-            )}
-
-            {progress.status === "scanning" && (
-              <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-yellow-400 border-t-transparent" />
-                <span>Scan en cours...</span>
-              </div>
-            )}
-
-            {progress.status === "completed" && (
-              <div className="flex items-center gap-2 text-green-400 text-sm">
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                <span>Scan terminé !</span>
-              </div>
-            )}
-
-            {progress.status === "error" && (
-              <div className="flex items-center gap-2 text-red-400 text-sm">
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-                <span>Erreur: {progress.error}</span>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={handleClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={handleSync}
+              disabled={syncing || dappsLoading}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+              {syncing ? "Synchronisation..." : "Synchroniser"}
+            </button>
 
-        {/* Progress Section */}
-        <div className="p-4 border-b border-gray-700">
-          <div className="mb-4">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-gray-400">Progression</span>
-              <span className="text-white font-mono">{progress.progress}%</span>
-            </div>
-            <div className="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 ease-out"
-                style={{ width: `${progress.progress}%` }}
-              />
-            </div>
-            {progress.currentStep && progress.status === "scanning" && (
-              <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
-                <div className="animate-spin rounded-full h-3 w-3 border-2 border-blue-400 border-t-transparent" />
-                <span>{progress.currentStep}</span>
-              </div>
-            )}
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* Discovered dApps List */}
+        {/* dApps List */}
         <div className="flex-1 overflow-y-auto p-6">
           <h3 className="text-lg font-semibold text-white mb-4">
-            dApps découvertes ({discoveredDApps.length})
+            dApps découvertes ({dapps.length})
           </h3>
 
-          {discoveredDApps.length === 0 ? (
+          {dappsLoading ? (
+            <div className="text-center py-12 text-gray-500">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-400 border-t-transparent mx-auto mb-4" />
+              <p>Chargement des dApps...</p>
+              <p className="text-sm mt-2">Récupération depuis la base de données</p>
+            </div>
+          ) : dappsError ? (
+            <div className="text-center py-12 text-red-500">
+              <svg
+                className="w-16 h-16 mx-auto mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p>Erreur lors du chargement des dApps</p>
+              <p className="text-sm mt-2 text-red-400">{dappsError}</p>
+            </div>
+          ) : dapps.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <svg
                 className="w-16 h-16 mx-auto mb-4 opacity-50"
@@ -473,14 +163,14 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
               </svg>
               <p>Aucune dApp découverte pour le moment</p>
               <p className="text-sm mt-2">
-                Démarrez le scan pour commencer la découverte
+                Cliquez sur "Synchroniser" pour charger les dApps depuis GitHub
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {discoveredDApps.map((dapp, index) => (
+              {dapps.map((dapp, index) => (
                 <div
-                  key={dapp.id || dapp.name || index}
+                  key={dapp.id}
                   className="relative bg-black/90 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-all animate-fade-in overflow-hidden"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
@@ -495,18 +185,17 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
                     />
                   )}
 
-                  {/* Content (relative to show above banner) */}
+                  {/* Content */}
                   <div className="relative z-10">
                     <div className="flex items-start gap-3 mb-3">
                       {/* Logo */}
                       <div className="flex-shrink-0">
-                        {dapp.logoUrl || dapp.logo ? (
+                        {dapp.logoUrl ? (
                           <img
-                            src={dapp.logoUrl || dapp.logo || ""}
+                            src={dapp.logoUrl}
                             alt={dapp.name || "Logo"}
                             className="w-12 h-12 rounded-lg bg-gray-700"
                             onError={(e) => {
-                              // Fallback en cas d'erreur de chargement
                               e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${dapp.name}&backgroundColor=1e293b&scale=80`;
                             }}
                           />
@@ -534,10 +223,7 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
                           </div>
                           <div className="flex items-center gap-2">
                             {/* Activity Score Badge */}
-                            {((dapp.stats?.activityScore !== undefined &&
-                              dapp.stats.activityScore > 0) ||
-                              (dapp.qualityScore !== undefined &&
-                                dapp.qualityScore > 0)) && (
+                            {(dapp.activityScore > 0 || dapp.qualityScore > 0) && (
                               <div className="flex items-center gap-1 bg-gray-800 px-2 py-1 rounded-md border border-gray-700">
                                 <svg
                                   className="w-3 h-3 text-yellow-400"
@@ -547,22 +233,13 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
                                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                 </svg>
                                 <span
-                                  className={`text-xs font-bold ${getQualityScoreColor(dapp.stats?.activityScore || dapp.qualityScore || 0)}`}
+                                  className={`text-xs font-bold ${getQualityScoreColor(dapp.activityScore || dapp.qualityScore)}`}
                                 >
-                                  {(
-                                    dapp.stats?.activityScore ||
-                                    dapp.qualityScore ||
-                                    0
-                                  ).toFixed(1)}
+                                  {(dapp.activityScore || dapp.qualityScore).toFixed(1)}
                                 </span>
-                                <span className="text-xs text-gray-500">
-                                  /10
-                                </span>
+                                <span className="text-xs text-gray-500">/10</span>
                               </div>
                             )}
-                            <div className="text-xs text-gray-500">
-                              À l'instant
-                            </div>
                           </div>
                         </div>
                         <div className="flex items-center flex-wrap gap-2 text-sm text-gray-400 mb-2">
@@ -573,133 +250,54 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
                           </span>
                           <span className="text-gray-600">•</span>
                           <span className="text-xs">
-                            {dapp.contractCount} contrat
-                            {dapp.contractCount > 1 ? "s" : ""}
+                            {dapp.contractCount} contrat{dapp.contractCount > 1 ? "s" : ""}
                           </span>
-                          {((dapp.stats?.activityScore !== undefined &&
-                            dapp.stats.activityScore > 0) ||
-                            (dapp.qualityScore !== undefined &&
-                              dapp.qualityScore > 0)) && (
+                          {(dapp.activityScore > 0 || dapp.qualityScore > 0) && (
                             <>
                               <span className="text-gray-600">•</span>
                               <span
-                                className={`text-xs font-medium ${getQualityScoreColor(dapp.stats?.activityScore || dapp.qualityScore || 0)}`}
+                                className={`text-xs font-medium ${getQualityScoreColor(dapp.activityScore || dapp.qualityScore)}`}
                               >
-                                {getQualityScoreLabel(
-                                  dapp.stats?.activityScore ||
-                                    dapp.qualityScore ||
-                                    0
-                                )}
+                                {getQualityScoreLabel(dapp.activityScore || dapp.qualityScore)}
                               </span>
                             </>
                           )}
                         </div>
 
-                        {/* Description (si disponible) */}
+                        {/* Description */}
                         {dapp.description && (
                           <div className="text-xs text-gray-400 mb-2 line-clamp-2">
                             {dapp.description}
                           </div>
                         )}
 
-                        {/* Enrichment Stats (si disponible) */}
-                        {dapp.stats && (
+                        {/* Stats */}
+                        {(dapp.totalTxCount > 0 || dapp.uniqueUsers > 0) && (
                           <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                             <div className="bg-gray-800/50 rounded px-2 py-1">
-                              <div className="text-gray-500 text-[10px]">
-                                Transactions
-                              </div>
+                              <div className="text-gray-500 text-[10px]">Transactions</div>
                               <div className="text-white font-medium">
-                                {dapp.stats.totalTxCount.toLocaleString()}
+                                {dapp.totalTxCount.toLocaleString()}
                               </div>
                             </div>
                             <div className="bg-gray-800/50 rounded px-2 py-1">
-                              <div className="text-gray-500 text-[10px]">
-                                Utilisateurs
-                              </div>
+                              <div className="text-gray-500 text-[10px]">Utilisateurs</div>
                               <div className="text-white font-medium">
-                                {dapp.stats.uniqueUsers.toLocaleString()}
+                                {dapp.uniqueUsers.toLocaleString()}
                               </div>
                             </div>
                             <div className="bg-gray-800/50 rounded px-2 py-1">
-                              <div className="text-gray-500 text-[10px]">
-                                Événements
-                              </div>
+                              <div className="text-gray-500 text-[10px]">Événements</div>
                               <div className="text-white font-medium">
-                                {dapp.stats.totalEventCount.toLocaleString()}
+                                {dapp.totalEventCount.toLocaleString()}
                               </div>
                             </div>
                           </div>
                         )}
-
-                        {/* Legacy Quality Score Details (pour backward compatibility) */}
-                        {!dapp.stats &&
-                          dapp.qualityScore !== undefined &&
-                          dapp.qualityScore > 0 && (
-                            <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-                              {dapp.activityScore !== undefined && (
-                                <div className="bg-gray-800/50 rounded px-2 py-1">
-                                  <div className="text-gray-500 text-[10px]">
-                                    Activity
-                                  </div>
-                                  <div className="text-white font-medium">
-                                    {dapp.activityScore.toFixed(1)}
-                                  </div>
-                                </div>
-                              )}
-                              {dapp.diversityScore !== undefined && (
-                                <div className="bg-gray-800/50 rounded px-2 py-1">
-                                  <div className="text-gray-500 text-[10px]">
-                                    Diversity
-                                  </div>
-                                  <div className="text-white font-medium">
-                                    {dapp.diversityScore.toFixed(1)}
-                                  </div>
-                                </div>
-                              )}
-                              {dapp.ageScore !== undefined && (
-                                <div className="bg-gray-800/50 rounded px-2 py-1">
-                                  <div className="text-gray-500 text-[10px]">
-                                    Age
-                                  </div>
-                                  <div className="text-white font-medium">
-                                    {dapp.ageScore.toFixed(1)}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
                       </div>
                     </div>
 
-                    {/* Contracts list (optional, for backward compatibility) */}
-                    {dapp.contracts && dapp.contracts.length > 0 && (
-                      <div className="space-y-1 pl-15">
-                        {dapp.contracts.slice(0, 3).map((contract) => (
-                          <div
-                            key={contract.address}
-                            className="flex items-center gap-2 text-xs font-mono"
-                          >
-                            <span className="text-gray-500">
-                              {contract.type}
-                            </span>
-                            <span className="text-gray-600">•</span>
-                            <span className="text-gray-400">
-                              {contract.address}
-                            </span>
-                          </div>
-                        ))}
-                        {dapp.contractCount > 3 && (
-                          <div className="text-xs text-gray-500 italic">
-                            +{dapp.contractCount - 3} autre
-                            {dapp.contractCount - 3 > 1 ? "s" : ""} contrat
-                            {dapp.contractCount - 3 > 1 ? "s" : ""}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Links (Website, GitHub, Twitter) */}
+                    {/* Links */}
                     {(dapp.website || dapp.github || dapp.twitter) && (
                       <div className="mt-2 pl-15 flex items-center gap-3 flex-wrap">
                         {dapp.website && (

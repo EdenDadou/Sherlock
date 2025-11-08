@@ -57,11 +57,17 @@ model DApp {
   name            String?
   description     String?
   logoUrl         String?
+  banner          String?
   symbol          String?
   website         String?
+  github          String?
+  twitter         String?
   category        DAppCategory    @default(UNKNOWN)
   status          DAppStatus      @default(ACTIVE)
   detectionSource DetectionSource @default(AUTO)
+
+  // GitHub source tracking
+  githubId        String?         @unique // ID from GitHub protocols repo
 
   // Quality scoring
   qualityScore    Float           @default(0) // Score de qualité (0-10)
@@ -71,8 +77,11 @@ model DApp {
 
   // Analytics
   totalTxCount    Int             @default(0)
+  totalEventCount Int             @default(0)
   uniqueUsers     Int             @default(0)
   tvlUsd          Float           @default(0) // Total Value Locked in USD
+  firstActivity   DateTime?
+  lastActivity    DateTime?
 
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

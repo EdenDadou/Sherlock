@@ -17,7 +17,10 @@
       "Bash(timeout 60 npm run enrich:protocols:*)",
       "Bash(npm run cron:init:*)",
       "Bash(npm run cron:sync:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run dev:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)"
     ],
     "deny": [],
     "ask": []

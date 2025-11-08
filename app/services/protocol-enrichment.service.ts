@@ -77,8 +77,8 @@ export class ProtocolEnrichmentService {
   }
 
   /**
-   * 1. RÉCUPÉRER LES PROTOCOLES DEPUIS LE REPO GITHUB MONAD
-   * Format: testnet/*.json ou mainnet/*.json
+   * 1. RÉCUPÉRER LES PROTOCOLES DEPUIS LE CSV GITHUB MONAD
+   * Format: protocols-testnet.csv ou protocols-mainnet.csv
    * AVEC CACHE (24h)
    */
   async fetchMonadProtocols(network: 'testnet' | 'mainnet' = 'testnet', forceRefresh: boolean = false): Promise<MonadProtocol[]> {
@@ -93,52 +93,75 @@ export class ProtocolEnrichmentService {
       }
     }
 
-    console.log(`📥 Récupération des protocoles depuis GitHub (${network})...\n`);
+    console.log(`📥 Récupération des protocoles depuis GitHub CSV (${network})...\n`);
 
     try {
-      // Récupérer la liste des fichiers dans testnet/ ou mainnet/
-      const response = await axios.get(
-        `https://api.github.com/repos/monad-crypto/protocols/contents/${network}`,
-        {
-          headers: {
-            Accept: 'application/vnd.github.v3+json',
-            ...(process.env.GITHUB_TOKEN && {
-              Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-            }),
-          },
-        }
-      );
+      // Récupérer le CSV depuis GitHub
+      const csvUrl = `https://raw.githubusercontent.com/monad-crypto/protocols/main/protocols-${network}.csv`;
+      const response = await axios.get(csvUrl, {
+        headers: {
+          Accept: 'text/csv',
+          ...(process.env.GITHUB_TOKEN && {
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+          }),
+        },
+      });
 
-      const protocols: MonadProtocol[] = [];
+      // Parser le CSV avec papaparse
+      const Papa = (await import('papaparse')).default;
+      const parsed = Papa.parse<string[]>(response.data, {
+        header: false,
+        skipEmptyLines: true,
+      });
 
-      // Pour chaque fichier .json ou .jsonc
-      for (const item of response.data) {
-        if (item.type === 'file' && (item.name.endsWith('.json') || item.name.endsWith('.jsonc'))) {
-          try {
-            const fileResponse = await axios.get(item.download_url);
-            const protocol = fileResponse.data;
-
-            // Convertir au format attendu
-            const converted: MonadProtocol = {
-              name: protocol.name,
-              description: protocol.description,
-              category: protocol.categories ? protocol.categories[0]?.split('::')[0] : undefined,
-              website: protocol.links?.project,
-              github: protocol.links?.github,
-              twitter: protocol.links?.twitter,
-              logo: protocol.image,
-              contracts: protocol.addresses || {},
-            };
-
-            protocols.push(converted);
-            console.log(`  ✓ ${converted.name} (${Object.keys(converted.contracts || {}).length} contrat(s))`);
-          } catch (error) {
-            console.log(`  ⚠️  ${item.name} (erreur de lecture)`);
-          }
-        }
+      if (parsed.errors.length > 0) {
+        console.error('⚠️ Erreurs lors du parsing CSV:', parsed.errors);
       }
 
-      console.log(`\n✓ ${protocols.length} protocoles récupérés\n`);
+      const rows = parsed.data;
+      if (rows.length === 0) {
+        console.log('⚠️ Aucune donnée trouvée dans le CSV GitHub');
+        return [];
+      }
+
+      // La première ligne contient les en-têtes
+      const headers = rows[0];
+      const dataRows = rows.slice(1);
+
+      console.log(`📊 ${dataRows.length} lignes trouvées dans le CSV GitHub`);
+
+      // Trouver les indices des colonnes importantes
+      const nameIdx = headers.findIndex(h => h.toLowerCase() === 'name');
+      const ctypeIdx = headers.findIndex(h => h.toLowerCase() === 'ctype');
+      const contractIdx = headers.findIndex(h => h.toLowerCase() === 'contract');
+      const addressIdx = headers.findIndex(h => h.toLowerCase() === 'address');
+
+      // Grouper les lignes par nom de protocole (car chaque ligne = 1 contrat)
+      const protocolsMap = new Map<string, MonadProtocol>();
+
+      for (const row of dataRows) {
+        const name = row[nameIdx]?.trim();
+        if (!name) continue;
+
+        const contractName = row[contractIdx]?.trim() || 'main';
+        const contractAddress = row[addressIdx]?.trim();
+        if (!contractAddress || !contractAddress.startsWith('0x')) continue;
+
+        // Récupérer ou créer le protocole
+        if (!protocolsMap.has(name)) {
+          protocolsMap.set(name, {
+            name,
+            category: row[ctypeIdx]?.trim(),
+            contracts: {},
+          });
+        }
+
+        const protocol = protocolsMap.get(name)!;
+        protocol.contracts![contractName] = contractAddress.toLowerCase();
+      }
+
+      const protocols = Array.from(protocolsMap.values());
+      console.log(`✓ ${protocols.length} protocoles uniques avec ${dataRows.length} contrats au total\n`);
 
       // Sauvegarder dans le cache (24h = 86400 secondes)
       await protocolCacheService.set(cacheKey, protocols, 86400);

@@ -12,6 +12,7 @@ import "./app.css";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { config } from "./wagmi";
+import { DappsProvider } from "./contexts/DappsContext";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -50,7 +51,9 @@ export default function App() {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <Outlet />
+        <DappsProvider>
+          <Outlet />
+        </DappsProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );
