@@ -10,6 +10,8 @@ interface DappCardProps {
     website: string | null;
     github: string | null;
     twitter: string | null;
+    discord?: string | null;
+    telegram?: string | null;
     twitterFollowers: string | null;
     contractCount: number;
     totalTxCount: number;
@@ -17,11 +19,13 @@ interface DappCardProps {
     totalEventCount: number;
     activityScore: number;
     qualityScore: number;
+    isEnriched?: boolean;
   };
   index: number;
+  hasUserInteracted?: boolean;
 }
 
-export function DappCard({ dapp, index }: DappCardProps) {
+export function DappCard({ dapp, index, hasUserInteracted = false }: DappCardProps) {
   // Debug: log dapp data to see what we have
   if (index === 0) {
     console.log("DappCard data sample:", {
@@ -114,6 +118,58 @@ export function DappCard({ dapp, index }: DappCardProps) {
 
       {/* Content */}
       <div className="relative z-10">
+        {/* Loading/Enrichment Status - Top Right Corner */}
+        {!dapp.isEnriched && (
+          <div className="absolute top-2 right-2 z-20">
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/40 rounded-full px-3 py-1.5 backdrop-blur-md shadow-lg">
+              <svg
+                className="w-4 h-4 text-blue-400 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <span className="text-xs font-semibold text-blue-300">
+                Chargement...
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* User Interaction Badge - Top Right Corner */}
+        {hasUserInteracted && dapp.isEnriched && (
+          <div className="absolute top-2 right-2 z-20">
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/40 rounded-full px-3 py-1.5 backdrop-blur-md shadow-lg">
+              <svg
+                className="w-4 h-4 text-green-400"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span className="text-xs font-semibold text-green-300">
+                Utilisé
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-start gap-3 mb-3">
           {/* Logo */}
           <div className="flex-shrink-0">
@@ -245,8 +301,8 @@ export function DappCard({ dapp, index }: DappCardProps) {
             )}
 
             {/* Links */}
-            {(dapp.website || dapp.github || dapp.twitter) && (
-              <div className="flex items-center gap-3 flex-wrap">
+            {(dapp.website || dapp.github || dapp.twitter || dapp.discord || dapp.telegram) && (
+              <div className="flex items-center gap-2 flex-wrap">
                 {dapp.website && (
                   <a
                     href={dapp.website}
@@ -270,6 +326,57 @@ export function DappCard({ dapp, index }: DappCardProps) {
                     Website
                   </a>
                 )}
+                {dapp.twitter && (
+                  <a
+                    href={dapp.twitter}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1.5 transition-colors bg-gray-800/80 px-2.5 py-1.5 rounded-md border border-gray-700 hover:border-sky-500/50 backdrop-blur-sm"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    <span>Twitter</span>
+                  </a>
+                )}
+                {dapp.discord && (
+                  <a
+                    href={dapp.discord}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 transition-colors bg-gray-800/80 px-2.5 py-1.5 rounded-md border border-gray-700 hover:border-indigo-500/50 backdrop-blur-sm"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                    </svg>
+                    <span>Discord</span>
+                  </a>
+                )}
+                {dapp.telegram && (
+                  <a
+                    href={dapp.telegram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 transition-colors bg-gray-800/80 px-2.5 py-1.5 rounded-md border border-gray-700 hover:border-cyan-500/50 backdrop-blur-sm"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                    </svg>
+                    <span>Telegram</span>
+                  </a>
+                )}
                 {dapp.github && (
                   <a
                     href={dapp.github}
@@ -289,23 +396,6 @@ export function DappCard({ dapp, index }: DappCardProps) {
                       />
                     </svg>
                     GitHub
-                  </a>
-                )}
-                {dapp.twitter && (
-                  <a
-                    href={dapp.twitter}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1.5 transition-colors bg-gray-800/80 px-2.5 py-1.5 rounded-md border border-gray-700 hover:border-sky-500/50 backdrop-blur-sm"
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                    </svg>
-                    <span>Twitter</span>
                   </a>
                 )}
               </div>

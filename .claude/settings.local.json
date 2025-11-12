@@ -22,7 +22,10 @@
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(sqlite3:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(python3:*)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"Va y\" npx prisma migrate reset:*)",
+      "Bash(npm run test:sse-sync:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAccount } from "wagmi";
 import { useDappsContext } from "~/contexts/DappsContext";
 import { DappCard } from "./DappCard";
 
@@ -8,8 +9,9 @@ interface DiscoveryModalProps {
 }
 
 export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
-  const { dapps, loading: dappsLoading, error: dappsError, syncDapps } = useDappsContext();
+  const { dapps, loading: dappsLoading, error: dappsError, syncDapps, userInteractedDappIds, loadUserInteractions, syncMessage } = useDappsContext();
   const [syncing, setSyncing] = useState(false);
+  const { address: userAddress, isConnected } = useAccount();
 
   const handleSync = async () => {
     setSyncing(true);
@@ -21,6 +23,14 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
       setSyncing(false);
     }
   };
+
+  // Load user interactions when modal opens and wallet is connected
+  useEffect(() => {
+    if (isOpen && isConnected && userAddress) {
+      console.log("🔍 Loading user interactions for modal...");
+      loadUserInteractions(userAddress);
+    }
+  }, [isOpen, isConnected, userAddress, loadUserInteractions]);
 
   if (!isOpen) return null;
 
@@ -69,11 +79,65 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
 
         {/* dApps List */}
         <div className="flex-1 overflow-y-auto p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            dApps découvertes ({dapps.length})
-          </h3>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h3 className="text-lg font-semibold text-white">
+              dApps découvertes ({dapps.length})
+            </h3>
+            <div className="flex items-center gap-2">
+              {/* Enrichment Status */}
+              {dapps.length > 0 && (
+                <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-1.5">
+                  <svg
+                    className="w-4 h-4 text-blue-400"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="text-sm font-medium text-blue-300">
+                    {dapps.filter(d => d.isEnriched).length} enrichies / {dapps.length}
+                  </span>
+                </div>
+              )}
 
-          {dappsLoading ? (
+              {/* User Interactions */}
+              {isConnected && userInteractedDappIds.length > 0 && (
+                <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-1.5">
+                  <svg
+                    className="w-4 h-4 text-green-400"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="text-sm font-medium text-green-300">
+                    {userInteractedDappIds.length} utilisée{userInteractedDappIds.length > 1 ? "s" : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {syncing ? (
+            <div className="text-center py-12 text-gray-500">
+              <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-400 border-t-transparent mx-auto mb-4" />
+              <p className="text-lg font-semibold text-white mb-2">Synchronisation en cours...</p>
+              <p className="text-sm">{syncMessage || "Scraping des projets Monvision"}</p>
+              {dapps.length > 0 && (
+                <p className="text-sm mt-4 text-blue-400">
+                  {dapps.length} dApps synchronisées
+                </p>
+              )}
+            </div>
+          ) : dappsLoading ? (
             <div className="text-center py-12 text-gray-500">
               <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-400 border-t-transparent mx-auto mb-4" />
               <p>Chargement des dApps...</p>
@@ -120,7 +184,12 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
           ) : (
             <div className="space-y-3">
               {dapps.map((dapp, index) => (
-                <DappCard key={dapp.id} dapp={dapp} index={index} />
+                <DappCard
+                  key={dapp.id}
+                  dapp={dapp}
+                  index={index}
+                  hasUserInteracted={userInteractedDappIds.includes(dapp.id)}
+                />
               ))}
             </div>
           )}

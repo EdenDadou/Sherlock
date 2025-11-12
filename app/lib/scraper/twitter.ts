@@ -13,7 +13,10 @@ export interface ScraperResult {
  * https://twitter.com/Balancer -> Balancer
  */
 function extractUsername(urlOrUsername: string): string {
-  if (urlOrUsername.includes("twitter.com") || urlOrUsername.includes("x.com")) {
+  if (
+    urlOrUsername.includes("twitter.com") ||
+    urlOrUsername.includes("x.com")
+  ) {
     const match = urlOrUsername.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
     return match ? match[1] : urlOrUsername;
   }
@@ -46,7 +49,11 @@ function parseFollowerCount(text: string): number | null {
     // Rule 2: Without K/M/B, remove ALL separators (comma, space, non-breaking space, etc.)
     // "2,552" -> 2552, "8 408" -> 8408
     console.log(`    🔧 Removing ALL separators...`);
-    console.log(`    🔍 Character codes: ${Array.from(cleaned).map(c => `${c}(${c.charCodeAt(0)})`).join(' ')}`);
+    console.log(
+      `    🔍 Character codes: ${Array.from(cleaned)
+        .map((c) => `${c}(${c.charCodeAt(0)})`)
+        .join(" ")}`
+    );
     cleaned = cleaned.replace(/[,\s\u00A0\u202F\u2009\u200A]+/g, ""); // All possible space types
     console.log(`    📝 After cleaning: "${cleaned}"`);
   }
@@ -57,7 +64,9 @@ function parseFollowerCount(text: string): number | null {
     return null;
   }
 
-  console.log(`    ✅ Matched: number="${match[1]}", suffix="${match[2] || "none"}"`);
+  console.log(
+    `    ✅ Matched: number="${match[1]}", suffix="${match[2] || "none"}"`
+  );
 
   const number = parseFloat(match[1]);
   const suffix = match[2]?.toUpperCase();
@@ -113,14 +122,14 @@ async function scrapeAccount(
       }
     });
 
-    // Navigate with shorter timeout
+    // Navigate with reasonable timeout
     await page.goto(url, {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle2",
       timeout: 15000,
     });
 
-    // Wait for content
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Wait for content to load
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
     // Try selectors - get the PARENT link element, not individual spans
     const possibleSelectors = [
@@ -136,11 +145,18 @@ async function scrapeAccount(
         const elements = await page.$$(selector);
         for (const element of elements) {
           // Get the full text content of the link (includes all child spans)
-          const text = await page.evaluate((el) => el.textContent?.trim(), element);
-          console.log(`    📄 Found text for selector "${selector}": "${text}"`);
+          const text = await page.evaluate(
+            (el) => el.textContent?.trim(),
+            element
+          );
+          console.log(
+            `    📄 Found text for selector "${selector}": "${text}"`
+          );
           if (
             text &&
-            (text.includes("Followers") || text.includes("abonnés") || /[\d,\s]+(\.\d+)?[KMB]?\s*(Followers?|abonnés?)/i.test(text))
+            (text.includes("Followers") ||
+              text.includes("abonnés") ||
+              /[\d,\s]+(\.\d+)?[KMB]?\s*(Followers?|abonnés?)/i.test(text))
           ) {
             followersText = text;
             console.log(`    ✅ Selected follower text: "${followersText}"`);
@@ -158,8 +174,12 @@ async function scrapeAccount(
 
     if (followersText) {
       // Remove "Followers" or "abonnés" and keep just the number part
-      const cleanedCount = followersText.replace(/\s*(Followers?|abonnés?)\s*/gi, "").trim();
-      console.log(`    ✅ @${cleanUsername}: ${cleanedCount} (from "${followersText}")`);
+      const cleanedCount = followersText
+        .replace(/\s*(Followers?|abonnés?)\s*/gi, "")
+        .trim();
+      console.log(
+        `    ✅ @${cleanUsername}: ${cleanedCount} (from "${followersText}")`
+      );
       return {
         username: cleanUsername,
         success: true,
@@ -193,8 +213,8 @@ async function scrapeAccount(
  */
 export async function scrapeTwitterFollowers(
   accounts: string[],
-  batchSize: number = 3,
-  delayBetweenBatches: number = 2000
+  batchSize: number = 5, // Balance between speed and reliability
+  delayBetweenBatches: number = 1500 // Balance between avoiding rate limits and speed
 ): Promise<ScraperResult[]> {
   if (accounts.length === 0) {
     return [];
@@ -232,8 +252,12 @@ export async function scrapeTwitterFollowers(
 
       // Delay between batches to avoid rate limiting
       if (i + batchSize < accounts.length) {
-        console.log(`   ⏳ Waiting ${delayBetweenBatches}ms before next batch...\n`);
-        await new Promise((resolve) => setTimeout(resolve, delayBetweenBatches));
+        console.log(
+          `   ⏳ Waiting ${delayBetweenBatches}ms before next batch...\n`
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, delayBetweenBatches)
+        );
       }
     }
   } finally {

@@ -12,7 +12,7 @@ export async function action({ request }: ActionFunctionArgs) {
     console.log("\n🐦 Starting async Twitter followers scraping...");
 
     // Fetch all dApps with Twitter accounts
-    const dappsWithTwitter = await prisma.dApp.findMany({
+    const dappsWithTwitter = await prisma.monvisionDApp.findMany({
       where: {
         twitter: {
           not: null,
@@ -38,8 +38,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Extract username helper
     const extractUsername = (urlOrUsername: string): string => {
-      if (urlOrUsername.includes("twitter.com") || urlOrUsername.includes("x.com")) {
-        const match = urlOrUsername.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+      if (
+        urlOrUsername.includes("twitter.com") ||
+        urlOrUsername.includes("x.com")
+      ) {
+        const match = urlOrUsername.match(
+          /(?:twitter\.com|x\.com)\/([^\/\?]+)/
+        );
         return match ? match[1].toLowerCase() : urlOrUsername.toLowerCase();
       }
       return urlOrUsername.replace("@", "").toLowerCase();
@@ -56,13 +61,15 @@ export async function action({ request }: ActionFunctionArgs) {
         .map((d) => d.twitter)
         .filter((t): t is string => t !== null);
 
-      console.log(`\n📦 Processing chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(dappsWithTwitter.length / CHUNK_SIZE)} (${chunkAccounts.length} accounts)`);
+      console.log(
+        `\n📦 Processing chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(dappsWithTwitter.length / CHUNK_SIZE)} (${chunkAccounts.length} accounts)`
+      );
 
       // Scrape this chunk
       const scraperResults = await scrapeTwitterFollowers(
         chunkAccounts,
-        3, // batch size
-        2000 // delay between batches
+        5, // batch size
+        1000 // delay between batches
       );
 
       // Update DB immediately for this chunk
@@ -70,11 +77,13 @@ export async function action({ request }: ActionFunctionArgs) {
       for (const result of scraperResults) {
         if (result.success && result.followersCount) {
           const dapp = chunk.find(
-            (d) => d.twitter && extractUsername(d.twitter) === result.username.toLowerCase()
+            (d) =>
+              d.twitter &&
+              extractUsername(d.twitter) === result.username.toLowerCase()
           );
 
           if (dapp) {
-            await prisma.dApp.update({
+            await prisma.monvisionDApp.update({
               where: { id: dapp.id },
               data: { twitterFollowers: result.followersCount as string },
             });
@@ -95,7 +104,9 @@ export async function action({ request }: ActionFunctionArgs) {
         }
       }
 
-      console.log(`✅ Chunk complete: ${chunkScrapedCount}/${chunkAccounts.length} updated`);
+      console.log(
+        `✅ Chunk complete: ${chunkScrapedCount}/${chunkAccounts.length} updated`
+      );
     }
 
     console.log(

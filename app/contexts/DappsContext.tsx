@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 
 interface DApp {
@@ -12,6 +12,8 @@ interface DApp {
   website: string | null;
   github: string | null;
   twitter: string | null;
+  discord?: string | null;
+  telegram?: string | null;
   twitterFollowers: string | null;
   contractCount: number;
   contracts?: any[];
@@ -24,6 +26,7 @@ interface DApp {
   lastActivity: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  isEnriched?: boolean;
 }
 
 interface DappsContextValue {
@@ -31,6 +34,9 @@ interface DappsContextValue {
   loading: boolean;
   error: string | null;
   syncDapps: () => Promise<void>;
+  userInteractedDappIds: string[];
+  loadUserInteractions: (userAddress: string) => Promise<void>;
+  syncMessage: string;
 }
 
 const DappsContext = createContext<DappsContextValue | undefined>(undefined);
@@ -40,6 +46,8 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [userInteractedDappIds, setUserInteractedDappIds] = useState<string[]>([]);
+  const [syncMessage, setSyncMessage] = useState<string>("");
 
   /**
    * Load dApps from database
@@ -73,66 +81,197 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Sync dApps from GitHub + Google Sheets
+   * Complete sync workflow: scrape dApps + social links + Twitter followers
    */
   const syncDapps = async () => {
     try {
       setLoading(true);
       setError(null);
+      setSyncMessage("Démarrage de la synchronisation complète...");
 
-      const response = await fetch("/api/dapps/sync", {
+      // Start complete sync workflow
+      const response = await fetch("/api/dapps/sync-complete", {
         method: "POST",
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to sync dApps: ${response.statusText}`);
+        throw new Error(`Failed to start sync: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to start sync");
+      }
+
+      console.log("✅ Complete sync started in background");
+      setSyncMessage("Scraping des projets Monvision (avec liens sociaux)...");
+
+      // Start polling immediately
+      setAutoRefresh(true);
+
+      // Keep loading state for a bit to show progress
+      setTimeout(() => {
+        setLoading(false);
+      }, 3000);
+
+    } catch (err) {
+      console.error("Error starting sync:", err);
+      setError(err instanceof Error ? err.message : "Failed to start sync");
+      setLoading(false);
+      setSyncMessage("");
+    }
+  };
+
+  /**
+   * Load user interactions with dApps
+   */
+  const loadUserInteractions = useCallback(async (userAddress: string) => {
+    try {
+      console.log(`🔍 Loading interactions for ${userAddress}...`);
+
+      const response = await fetch(
+        `/api/user/interactions?address=${encodeURIComponent(userAddress)}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to load user interactions: ${response.statusText}`);
       }
 
       const data = await response.json();
       if (data.success) {
-        // Reload dApps after sync
-        await loadDapps();
-        // Enable auto-refresh to see Twitter followers updates
-        setAutoRefresh(true);
+        setUserInteractedDappIds(data.interactedDappIds || []);
+        console.log(`✅ Loaded ${data.interactedDappIds?.length || 0} interactions`);
       } else {
-        throw new Error(data.error || "Failed to sync dApps");
+        console.warn("Failed to load user interactions:", data.error);
+        setUserInteractedDappIds([]);
       }
     } catch (err) {
-      console.error("Error syncing dApps:", err);
-      setError(err instanceof Error ? err.message : "Failed to sync dApps");
-    } finally {
-      setLoading(false);
+      console.error("Error loading user interactions:", err);
+      setUserInteractedDappIds([]);
     }
-  };
+  }, []);
+
+  /**
+   * Refresh only metadata that changes (Twitter followers)
+   * This is a lightweight alternative to loadDapps that doesn't refetch everything
+   */
+  const refreshMetadata = useCallback(async () => {
+    try {
+      const response = await fetch("/api/dapps/refresh-metadata");
+      if (!response.ok) {
+        throw new Error(`Failed to refresh metadata: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.success && data.twitterFollowers) {
+        // Update only the Twitter followers in the existing dApps
+        setDapps((prevDapps) =>
+          prevDapps.map((dapp) => ({
+            ...dapp,
+            twitterFollowers: data.twitterFollowers[dapp.id] ?? dapp.twitterFollowers,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Error refreshing metadata:", err);
+    }
+  }, []);
 
   // Load dApps on mount
   useEffect(() => {
     loadDapps();
   }, []);
 
-  // Auto-refresh every 10 seconds when enabled (for Twitter followers updates)
+  // Auto-refresh with intelligent stopping (during initial sync only)
   useEffect(() => {
     if (!autoRefresh) return;
 
-    const interval = setInterval(() => {
-      console.log("🔄 Auto-refreshing dApps for Twitter followers updates...");
-      loadDapps(true); // Silent refresh
-    }, 10000); // Every 10 seconds
+    let previousCount = dapps.length;
+    let previousEnrichedCount = dapps.filter(d => d.isEnriched).length;
+    let previousTwitterCount = dapps.filter(d => d.twitterFollowers).length;
+    let stableCount = 0;
 
-    // Stop auto-refresh after 5 minutes (Twitter scraping should be done)
+    const interval = setInterval(async () => {
+      console.log("🔄 Auto-refreshing dApps...");
+      await loadDapps(true); // Silent refresh
+
+      const currentEnrichedCount = dapps.filter(d => d.isEnriched).length;
+      const currentTwitterCount = dapps.filter(d => d.twitterFollowers).length;
+
+      // Check if counts have stabilized
+      const isStable =
+        dapps.length === previousCount &&
+        currentEnrichedCount === previousEnrichedCount &&
+        currentTwitterCount === previousTwitterCount;
+
+      if (isStable) {
+        stableCount++;
+        if (stableCount >= 5) { // If stable for 10 seconds (5 * 2s)
+          console.log("✅ Sync appears complete, stopping auto-refresh");
+          setAutoRefresh(false);
+          setSyncMessage("");
+        }
+      } else {
+        stableCount = 0;
+        // Update message with progress
+        const parts = [];
+        if (dapps.length > 0) parts.push(`${dapps.length} dApps`);
+        if (currentEnrichedCount > 0) parts.push(`${currentEnrichedCount} enrichies`);
+        if (currentTwitterCount > 0) parts.push(`${currentTwitterCount} Twitter`);
+        setSyncMessage(parts.join(", ") + "...");
+      }
+
+      previousCount = dapps.length;
+      previousEnrichedCount = currentEnrichedCount;
+      previousTwitterCount = currentTwitterCount;
+    }, 2000); // Every 2 seconds
+
+    // Failsafe: Stop after 10 minutes (enrichment takes time)
     const timeout = setTimeout(() => {
-      console.log("⏹️ Stopping auto-refresh");
+      console.log("⏹️ Max refresh time reached");
       setAutoRefresh(false);
-    }, 5 * 60 * 1000); // 5 minutes
+      setSyncMessage("");
+    }, 10 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [autoRefresh]);
+  }, [autoRefresh, dapps.length]);
+
+  // Periodic metadata refresh (every 5 minutes)
+  // Only refreshes Twitter followers, not the entire dApp list
+  useEffect(() => {
+    // Initial metadata refresh after 10 seconds
+    const initialTimeout = setTimeout(() => {
+      console.log("🔄 Initial metadata refresh...");
+      refreshMetadata();
+    }, 10000);
+
+    // Then refresh every 5 minutes
+    const interval = setInterval(() => {
+      console.log("🔄 Periodic metadata refresh...");
+      refreshMetadata();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, [refreshMetadata]);
 
   return (
-    <DappsContext.Provider value={{ dapps, loading, error, syncDapps }}>
+    <DappsContext.Provider
+      value={{
+        dapps,
+        loading,
+        error,
+        syncDapps,
+        userInteractedDappIds,
+        loadUserInteractions,
+        syncMessage,
+      }}
+    >
       {children}
     </DappsContext.Provider>
   );

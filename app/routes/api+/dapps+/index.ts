@@ -3,49 +3,52 @@ import { prisma } from "~/lib/db/prisma";
 
 /**
  * GET /api/dapps
- * Returns all dApps from database
+ * Returns all dApps from Monvision
  */
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
-    const dapps = await prisma.dApp.findMany({
+    // Load Monvision dApps with contracts
+    const monvisionDapps = await prisma.monvisionDApp.findMany({
       include: {
-        contracts: {
-          select: {
-            id: true,
-            address: true,
-            type: true,
-            name: true,
-            symbol: true,
-          },
-        },
+        contracts: true,
       },
-      orderBy: [{ qualityScore: "desc" }, { name: "asc" }],
+      orderBy: { name: "asc" },
     });
 
-    // Transform data for frontend
-    const transformedDapps = dapps.map((dapp) => ({
+    // Transform Monvision dApps to match frontend interface
+    const transformedDapps = monvisionDapps.map((dapp) => ({
       id: dapp.id,
       name: dapp.name,
       description: dapp.description,
       logoUrl: dapp.logoUrl,
-      banner: dapp.banner,
-      symbol: dapp.symbol,
-      category: dapp.category,
+      banner: null,
+      symbol: null,
+      category: dapp.category || "Other",
       website: dapp.website,
       github: dapp.github,
       twitter: dapp.twitter,
-      twitterFollowers: dapp.twitterFollowers,
+      discord: dapp.discord,
+      telegram: dapp.telegram,
+      docs: dapp.docs,
+      twitterFollowers: dapp.twitterFollowers, // ✅ Retourne la vraie valeur depuis la DB
       contractCount: dapp.contracts.length,
-      contracts: dapp.contracts,
-      totalTxCount: dapp.totalTxCount,
-      totalEventCount: dapp.totalEventCount,
-      uniqueUsers: dapp.uniqueUsers,
-      activityScore: dapp.activityScore,
-      qualityScore: dapp.qualityScore,
-      firstActivity: dapp.firstActivity,
-      lastActivity: dapp.lastActivity,
+      contracts: dapp.contracts.map(c => ({
+        id: c.id,
+        address: c.address,
+        name: c.name,
+        type: c.type,
+      })),
+      totalTxCount: Number(dapp.transactionsCount),
+      totalEventCount: 0,
+      uniqueUsers: dapp.accountsCount,
+      activityScore: 0,
+      qualityScore: 0,
+      firstActivity: null,
+      lastActivity: null,
       createdAt: dapp.createdAt,
       updatedAt: dapp.updatedAt,
+      detailsUrl: dapp.detailsUrl,
+      isEnriched: dapp.isEnriched,
     }));
 
     return Response.json({

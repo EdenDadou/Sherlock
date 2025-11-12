@@ -295,3 +295,67 @@ model CronJob {
   @@index([nextRun])
   @@map("cron_jobs")
 }
+
+// Monvision ecosystem dApps
+model MonvisionDApp {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  logoUrl         String?
+  category        String?  // Type du projet (Dex, Lending, LST, etc.)
+
+  // Links
+  website         String?
+  twitter         String?
+  discord         String?
+  telegram        String?
+  github          String?
+  docs            String?
+  detailsUrl      String?  // URL vers la page de détails sur Monvision
+
+  // Social metrics
+  twitterFollowers String?  // Twitter/X followers count (e.g., "12 k", "2 552")
+
+  // Statistics
+  accountsCount   Int      @default(0)
+  transactionsCount BigInt @default(0)
+
+  // Enrichment status
+  isEnriched      Boolean  @default(false) // True if details have been fetched
+  enrichedAt      DateTime? // When enrichment was completed
+
+  // Relations
+  contracts       MonvisionContract[]
+
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([name])
+  @@index([category])
+  @@index([accountsCount])
+  @@index([transactionsCount])
+  @@index([isEnriched])
+  @@map("monvision_dapps")
+}
+
+// Contracts for Monvision dApps
+model MonvisionContract {
+  id              String   @id @default(cuid())
+  address         String
+  name            String?
+  type            String?  // Type de contrat
+
+  // Relations
+  dappId          String
+  dapp            MonvisionDApp @relation(fields: [dappId], references: [id], onDelete: Cascade)
+
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([dappId, address]) // Un contrat ne peut être lié qu'une fois à une dApp
+  @@index([address])
+  @@index([dappId])
+  @@map("monvision_contracts")
+}
