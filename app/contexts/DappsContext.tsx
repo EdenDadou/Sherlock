@@ -12,7 +12,7 @@ interface DApp {
   website: string | null;
   github: string | null;
   twitter: string | null;
-  twitterFollowers: number | null;
+  twitterFollowers: string | null;
   contractCount: number;
   contracts?: any[];
   totalTxCount: number;

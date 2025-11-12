@@ -10,7 +10,7 @@ interface DappCardProps {
     website: string | null;
     github: string | null;
     twitter: string | null;
-    twitterFollowers: number | null;
+    twitterFollowers: string | null;
     contractCount: number;
     totalTxCount: number;
     uniqueUsers: number;
@@ -200,7 +200,7 @@ export function DappCard({ dapp, index }: DappCardProps) {
             )}
 
             {/* Twitter Followers - Prominent Display */}
-            {dapp.twitterFollowers && dapp.twitterFollowers > 0 && (
+            {dapp.twitterFollowers && (
               <div className="mb-3">
                 <div className="inline-flex items-center gap-2 bg-sky-500/10 border border-sky-500/30 rounded-lg px-3 py-2">
                   <svg
@@ -212,11 +212,7 @@ export function DappCard({ dapp, index }: DappCardProps) {
                   </svg>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-lg font-bold text-sky-300">
-                      {dapp.twitterFollowers >= 1000000
-                        ? `${(dapp.twitterFollowers / 1000000).toFixed(1)}M`
-                        : dapp.twitterFollowers >= 1000
-                          ? `${(dapp.twitterFollowers / 1000).toFixed(1)}K`
-                          : dapp.twitterFollowers.toLocaleString()}
+                      {dapp.twitterFollowers}
                     </span>
                     <span className="text-xs text-sky-400/70">followers</span>
                   </div>

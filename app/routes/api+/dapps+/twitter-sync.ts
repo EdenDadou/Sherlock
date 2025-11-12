@@ -36,83 +36,78 @@ export async function action({ request }: ActionFunctionArgs) {
 
     console.log(`Found ${dappsWithTwitter.length} dApps with Twitter accounts`);
 
-    const twitterAccounts = dappsWithTwitter
-      .map((d: { twitter: string | null }) => d.twitter)
-      .filter((t: string | null): t is string => t !== null);
+    // Extract username helper
+    const extractUsername = (urlOrUsername: string): string => {
+      if (urlOrUsername.includes("twitter.com") || urlOrUsername.includes("x.com")) {
+        const match = urlOrUsername.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
+        return match ? match[1].toLowerCase() : urlOrUsername.toLowerCase();
+      }
+      return urlOrUsername.replace("@", "").toLowerCase();
+    };
 
-    // Start scraping asynchronously
-    const scraperResults = await scrapeTwitterFollowers(
-      twitterAccounts,
-      3, // batch size
-      2000 // delay between batches
-    );
+    // Process in chunks of 10
+    const CHUNK_SIZE = 10;
+    let totalScrapedCount = 0;
+    const allUpdates = [];
 
-    // Update dApps with follower counts
-    let scrapedCount = 0;
-    const updates = [];
+    for (let i = 0; i < dappsWithTwitter.length; i += CHUNK_SIZE) {
+      const chunk = dappsWithTwitter.slice(i, i + CHUNK_SIZE);
+      const chunkAccounts = chunk
+        .map((d) => d.twitter)
+        .filter((t): t is string => t !== null);
 
-    for (const result of scraperResults) {
-      if (result.success && result.followersCount) {
-        // Extract username from Twitter URL for matching
-        const extractUsername = (urlOrUsername: string): string => {
-          if (urlOrUsername.includes("twitter.com") || urlOrUsername.includes("x.com")) {
-            const match = urlOrUsername.match(/(?:twitter\.com|x\.com)\/([^\/\?]+)/);
-            return match ? match[1].toLowerCase() : urlOrUsername.toLowerCase();
-          }
-          return urlOrUsername.replace("@", "").toLowerCase();
-        };
+      console.log(`\n📦 Processing chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(dappsWithTwitter.length / CHUNK_SIZE)} (${chunkAccounts.length} accounts)`);
 
-        const dapp = dappsWithTwitter.find(
-          (d: { id: string; name: string | null; twitter: string | null }) => {
-            if (!d.twitter) return false;
+      // Scrape this chunk
+      const scraperResults = await scrapeTwitterFollowers(
+        chunkAccounts,
+        3, // batch size
+        2000 // delay between batches
+      );
 
-            const dappUsername = extractUsername(d.twitter);
-            const resultUsername = result.username.toLowerCase();
-
-            // Debug log for first few to see what we're comparing
-            if (scrapedCount < 3) {
-              console.log(`    🔍 Matching: "${resultUsername}" vs "${dappUsername}" (from ${d.twitter})`);
-            }
-
-            return dappUsername === resultUsername;
-          }
-        );
-
-        if (dapp) {
-          await prisma.dApp.update({
-            where: { id: dapp.id },
-            data: { twitterFollowers: result.followersCount },
-          });
-
-          scrapedCount++;
-          updates.push({
-            dappId: dapp.id,
-            dappName: dapp.name,
-            username: result.username,
-            followers: result.followersCount,
-          });
-
-          console.log(
-            `  ✅ Updated ${dapp.name}: ${result.followersCount.toLocaleString()} followers`
+      // Update DB immediately for this chunk
+      let chunkScrapedCount = 0;
+      for (const result of scraperResults) {
+        if (result.success && result.followersCount) {
+          const dapp = chunk.find(
+            (d) => d.twitter && extractUsername(d.twitter) === result.username.toLowerCase()
           );
-        } else {
-          console.log(
-            `  ⚠️  No dApp found for @${result.username} (${result.followersCount.toLocaleString()} followers)`
-          );
+
+          if (dapp) {
+            await prisma.dApp.update({
+              where: { id: dapp.id },
+              data: { twitterFollowers: result.followersCount as string },
+            });
+
+            chunkScrapedCount++;
+            totalScrapedCount++;
+            allUpdates.push({
+              dappId: dapp.id,
+              dappName: dapp.name,
+              username: result.username,
+              followers: result.followersCount,
+            });
+
+            console.log(`  ✅ Updated ${dapp.name}: ${result.followersCount}`);
+          } else {
+            console.log(`  ⚠️  No dApp found for @${result.username}`);
+          }
         }
       }
+
+      console.log(`✅ Chunk complete: ${chunkScrapedCount}/${chunkAccounts.length} updated`);
     }
 
     console.log(
-      `\n🎉 Twitter scraping complete: ${scrapedCount}/${dappsWithTwitter.length} updated`
+      `\n🎉 Twitter scraping complete: ${totalScrapedCount}/${dappsWithTwitter.length} updated`
     );
 
     return Response.json({
       success: true,
-      message: `Twitter scraping complete: ${scrapedCount}/${dappsWithTwitter.length} updated`,
-      scrapedCount,
+      message: `Twitter scraping complete: ${totalScrapedCount}/${dappsWithTwitter.length} updated`,
+      scrapedCount: totalScrapedCount,
       totalCount: dappsWithTwitter.length,
-      updates,
+      updates: allUpdates,
     });
   } catch (error) {
     console.error("Error scraping Twitter followers:", error);

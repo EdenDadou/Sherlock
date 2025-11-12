@@ -3,7 +3,7 @@ import puppeteer, { Browser } from "puppeteer";
 export interface ScraperResult {
   username: string;
   success: boolean;
-  followersCount?: number;
+  followersCount?: number | string;
   error?: string;
 }
 
@@ -22,32 +22,63 @@ function extractUsername(urlOrUsername: string): string {
 
 /**
  * Parse follower count text to number
- * Handles both comma and dot as decimal separators
+ * Rules:
+ * - "16.2K Followers" -> 16200 (point before K/M/B = decimal)
+ * - "2,552 Followers" -> 2552 (comma/space = thousand separator)
  */
 function parseFollowerCount(text: string): number | null {
-  let cleaned = text.replace(/Followers?/i, "").trim();
+  console.log(`    🔍 Parsing: "${text}"`);
 
-  // Handle French/European format: "154,9 k" -> "154.9k"
-  cleaned = cleaned.replace(/,(\d{1,2})\s*([KMB])/i, ".$1$2");
-  cleaned = cleaned.replace(/,/g, "");
-  cleaned = cleaned.replace(/\s+([KMB])/gi, "$1");
+  // Remove "Followers" or "abonnés" (French)
+  let cleaned = text.replace(/Followers?|abonnés?/gi, "").trim();
+  console.log(`    📝 After removing text: "${cleaned}"`);
+
+  // Check if there's a K/M/B suffix
+  const hasSuffix = /[KMB]/i.test(cleaned);
+  console.log(`    🏷️  Has suffix: ${hasSuffix}`);
+
+  if (hasSuffix) {
+    // Rule 1: With K/M/B, keep decimal point
+    // "16.2K" -> 16.2 * 1000, "154,9 k" -> 154.9 * 1000
+    cleaned = cleaned.replace(/[,\s](\d{1,2})\s*([KMB])/i, ".$1$2");
+    cleaned = cleaned.replace(/\s+/g, "");
+  } else {
+    // Rule 2: Without K/M/B, remove ALL separators (comma, space, non-breaking space, etc.)
+    // "2,552" -> 2552, "8 408" -> 8408
+    console.log(`    🔧 Removing ALL separators...`);
+    console.log(`    🔍 Character codes: ${Array.from(cleaned).map(c => `${c}(${c.charCodeAt(0)})`).join(' ')}`);
+    cleaned = cleaned.replace(/[,\s\u00A0\u202F\u2009\u200A]+/g, ""); // All possible space types
+    console.log(`    📝 After cleaning: "${cleaned}"`);
+  }
 
   const match = cleaned.match(/([\d.]+)\s*([KMB])?/i);
-  if (!match) return null;
+  if (!match) {
+    console.log(`    ❌ No match found!`);
+    return null;
+  }
+
+  console.log(`    ✅ Matched: number="${match[1]}", suffix="${match[2] || "none"}"`);
 
   const number = parseFloat(match[1]);
   const suffix = match[2]?.toUpperCase();
 
+  let result: number;
   switch (suffix) {
     case "K":
-      return Math.round(number * 1000);
+      result = Math.round(number * 1000);
+      break;
     case "M":
-      return Math.round(number * 1000000);
+      result = Math.round(number * 1000000);
+      break;
     case "B":
-      return Math.round(number * 1000000000);
+      result = Math.round(number * 1000000000);
+      break;
     default:
-      return Math.round(number);
+      result = Math.round(number);
   }
+
+  console.log(`    🎯 Final result: ${result}`);
+  return result;
 }
 
 /**
@@ -91,11 +122,11 @@ async function scrapeAccount(
     // Wait for content
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Try selectors
+    // Try selectors - get the PARENT link element, not individual spans
     const possibleSelectors = [
-      'a[href$="/verified_followers"] span',
-      'a[href$="/followers"] span',
-      '[data-testid="primaryColumn"] a[href*="followers"] span',
+      'a[href$="/verified_followers"]',
+      'a[href$="/followers"]',
+      '[data-testid="primaryColumn"] a[href*="followers"]',
     ];
 
     let followersText = null;
@@ -104,17 +135,21 @@ async function scrapeAccount(
       try {
         const elements = await page.$$(selector);
         for (const element of elements) {
-          const text = await page.evaluate((el) => el.textContent, element);
+          // Get the full text content of the link (includes all child spans)
+          const text = await page.evaluate((el) => el.textContent?.trim(), element);
+          console.log(`    📄 Found text for selector "${selector}": "${text}"`);
           if (
             text &&
-            (text.includes("Followers") || /[\d,]+(\.\d+)?[KMB]?/.test(text))
+            (text.includes("Followers") || text.includes("abonnés") || /[\d,\s]+(\.\d+)?[KMB]?\s*(Followers?|abonnés?)/i.test(text))
           ) {
             followersText = text;
+            console.log(`    ✅ Selected follower text: "${followersText}"`);
             break;
           }
         }
         if (followersText) break;
       } catch (err) {
+        console.log(`    ⚠️  Error with selector "${selector}": ${err}`);
         // Continue to next selector
       }
     }
@@ -122,12 +157,13 @@ async function scrapeAccount(
     await page.close();
 
     if (followersText) {
-      const count = parseFollowerCount(followersText);
-      console.log(`    ✅ @${cleanUsername}: ${count?.toLocaleString()} followers`);
+      // Remove "Followers" or "abonnés" and keep just the number part
+      const cleanedCount = followersText.replace(/\s*(Followers?|abonnés?)\s*/gi, "").trim();
+      console.log(`    ✅ @${cleanUsername}: ${cleanedCount} (from "${followersText}")`);
       return {
         username: cleanUsername,
         success: true,
-        followersCount: count || undefined,
+        followersCount: cleanedCount,
       };
     } else {
       console.log(`    ⚠️  @${cleanUsername}: Follower count not found`);
