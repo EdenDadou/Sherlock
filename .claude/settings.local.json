@@ -25,7 +25,11 @@
       "Bash(npm install:*)",
       "Bash(python3:*)",
       "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"Va y\" npx prisma migrate reset:*)",
-      "Bash(npm run test:sse-sync:*)"
+      "Bash(npm run test:sse-sync:*)",
+      "Bash(for file in analyze-specific-tx.ts analyze-user-transactions.ts check-hypersync-status.ts debug-detection.ts debug-monvision-page.ts rescrape-atlantis.ts)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
