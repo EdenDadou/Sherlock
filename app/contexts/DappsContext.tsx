@@ -33,7 +33,7 @@ interface DappsContextValue {
   dapps: DApp[];
   loading: boolean;
   error: string | null;
-  syncDapps: () => Promise<void>;
+  syncDapps: (userAddress?: string) => Promise<void>;
   userInteractedDappIds: string[];
   loadUserInteractions: (userAddress: string) => Promise<void>;
   syncMessage: string;
@@ -82,8 +82,9 @@ export function DappsProvider({ children }: { children: ReactNode }) {
 
   /**
    * Complete sync workflow: scrape dApps + social links + Twitter followers
+   * @param userAddress - Optional user wallet address to re-check interactions after sync
    */
-  const syncDapps = async () => {
+  const syncDapps = async (userAddress?: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -113,6 +114,23 @@ export function DappsProvider({ children }: { children: ReactNode }) {
       setTimeout(() => {
         setLoading(false);
       }, 3000);
+
+      // Re-check user interactions after sync completes (if user is connected)
+      if (userAddress) {
+        console.log("🔄 Scheduling user interactions re-check after sync...");
+        // Wait for sync to stabilize before re-checking
+        // This will be triggered when autoRefresh stops (sync complete)
+        const checkInterval = setInterval(() => {
+          if (!autoRefresh) {
+            clearInterval(checkInterval);
+            console.log("🔍 Re-checking user interactions after sync completion...");
+            loadUserInteractions(userAddress);
+          }
+        }, 2000);
+
+        // Failsafe: clear interval after 15 minutes
+        setTimeout(() => clearInterval(checkInterval), 15 * 60 * 1000);
+      }
 
     } catch (err) {
       console.error("Error starting sync:", err);
@@ -152,30 +170,17 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Refresh only metadata that changes (Twitter followers)
-   * This is a lightweight alternative to loadDapps that doesn't refetch everything
+   * Refresh metadata by reloading dApps from database
+   * This is lightweight since it's just a SQL query
    */
   const refreshMetadata = useCallback(async () => {
     try {
-      const response = await fetch("/api/dapps/refresh-metadata");
-      if (!response.ok) {
-        throw new Error(`Failed to refresh metadata: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (data.success && data.twitterFollowers) {
-        // Update only the Twitter followers in the existing dApps
-        setDapps((prevDapps) =>
-          prevDapps.map((dapp) => ({
-            ...dapp,
-            twitterFollowers: data.twitterFollowers[dapp.id] ?? dapp.twitterFollowers,
-          }))
-        );
-      }
+      // Silently reload dApps without showing loading state
+      await loadDapps(true);
     } catch (err) {
       console.error("Error refreshing metadata:", err);
     }
-  }, []);
+  }, [loadDapps]);
 
   // Load dApps on mount
   useEffect(() => {

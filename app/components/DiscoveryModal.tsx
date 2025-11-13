@@ -16,7 +16,8 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await syncDapps();
+      // Pass user address if connected so interactions can be re-checked after sync
+      await syncDapps(isConnected ? userAddress : undefined);
     } catch (error) {
       console.error("Error syncing dApps:", error);
     } finally {
@@ -26,9 +27,22 @@ export function DiscoveryModal({ isOpen, onClose }: DiscoveryModalProps) {
 
   // Load user interactions when modal opens and wallet is connected
   useEffect(() => {
+    console.log("🔍 DiscoveryModal - Wallet status:", {
+      isOpen,
+      isConnected,
+      userAddress,
+      userInteractedDappIds: userInteractedDappIds.length,
+    });
+
     if (isOpen && isConnected && userAddress) {
       console.log("🔍 Loading user interactions for modal...");
       loadUserInteractions(userAddress);
+    } else {
+      console.log("⚠️ Not loading interactions:", {
+        modalOpen: isOpen,
+        walletConnected: isConnected,
+        addressAvailable: !!userAddress,
+      });
     }
   }, [isOpen, isConnected, userAddress, loadUserInteractions]);
 

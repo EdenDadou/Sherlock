@@ -47,7 +47,8 @@ export class UserInteractionsService {
     // Normaliser l'adresse
     const normalizedAddress = userAddress.toLowerCase();
 
-    // 1. Récupérer tous les contrats des dApps depuis la DB
+    // 1. Récupérer tous les contrats des dApps depuis TOUTES les tables
+    // Table DApp (ancienne)
     const dappContracts = await prisma.contract.findMany({
       where: {
         dappId: { not: null },
@@ -64,7 +65,44 @@ export class UserInteractionsService {
       },
     });
 
-    if (dappContracts.length === 0) {
+    // Table MonvisionDApp (nouvelle, avec les contrats scrapés depuis Monvision)
+    const monvisionContracts = await prisma.monvisionContract.findMany({
+      select: {
+        address: true,
+        dappId: true,
+        dapp: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Combiner les deux sources de contrats
+    const allContracts = [
+      ...dappContracts,
+      ...monvisionContracts.map(mc => ({
+        address: mc.address,
+        dappId: mc.dappId,
+        dapp: mc.dapp,
+      })),
+    ];
+
+    // Filtrer les adresses invalides (doivent commencer par 0x et avoir 42 ou 43 caractères)
+    // Note: Accepte temporairement 43 chars pour debug d'adresses spéciales
+    const validContracts = allContracts.filter(c => {
+      const isValid = c.address &&
+                     c.address.toLowerCase().startsWith('0x') &&
+                     (c.address.length === 42 || c.address.length === 43) &&
+                     /^0x[a-fA-F0-9]{40,41}$/.test(c.address);
+      if (!isValid) {
+        console.warn(`⚠️  Adresse de contrat invalide ignorée: ${c.address} (length: ${c.address?.length})`);
+      }
+      return isValid;
+    });
+
+    if (validContracts.length === 0) {
       console.log('⚠️ Aucun contrat de dApp trouvé dans la DB');
       return {
         userAddress: normalizedAddress,
@@ -74,7 +112,7 @@ export class UserInteractionsService {
       };
     }
 
-    console.log(`📊 ${dappContracts.length} contrats à analyser`);
+    console.log(`📊 ${validContracts.length} contrats valides à analyser (${dappContracts.length} DApp + ${monvisionContracts.length} Monvision)`);
 
     // 2. Déterminer la plage de blocs
     const currentBlock = await this.envioService.getCurrentBlock();
@@ -92,7 +130,7 @@ export class UserInteractionsService {
       // Logs où l'utilisateur apparaît dans les topics
       this.getUserLogs(normalizedAddress, startBlock, endBlock),
       // NOUVEAU: Tous les logs des contrats dApps dans la plage de blocs
-      this.getAllDappContractLogs(dappContracts.map(dc => dc.address), startBlock, endBlock),
+      this.getAllDappContractLogs(validContracts.map(dc => dc.address), startBlock, endBlock),
     ]);
 
     console.log(`📊 ${userTransactions.length} transactions + ${userLogs.length} logs utilisateur + ${allDappLogs.length} logs dApps`);
@@ -110,7 +148,7 @@ export class UserInteractionsService {
 
     // Créer un index des contrats pour une recherche rapide
     const contractIndex = new Map(
-      dappContracts.map((dc) => [dc.address.toLowerCase(), dc])
+      validContracts.map((dc) => [dc.address.toLowerCase(), dc])
     );
 
     // Traiter les transactions directes
@@ -540,11 +578,19 @@ export class UserInteractionsService {
   ): Promise<boolean> {
     const normalizedAddress = userAddress.toLowerCase();
 
-    // Récupérer les contrats de cette dApp
-    const contracts = await prisma.contract.findMany({
-      where: { dappId },
-      select: { address: true },
-    });
+    // Récupérer les contrats de cette dApp depuis les deux tables
+    const [dappContracts, monvisionContracts] = await Promise.all([
+      prisma.contract.findMany({
+        where: { dappId },
+        select: { address: true },
+      }),
+      prisma.monvisionContract.findMany({
+        where: { dappId },
+        select: { address: true },
+      }),
+    ]);
+
+    const contracts = [...dappContracts, ...monvisionContracts];
 
     if (contracts.length === 0) {
       return false;
