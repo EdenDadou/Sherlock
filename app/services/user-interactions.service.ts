@@ -20,15 +20,33 @@ export interface UserInteractionSummary {
   interactions: UserInteraction[];
 }
 
+export interface ProgressUpdate {
+  current: number;
+  total: number;
+  percentage: number;
+  transactionsFound: number;
+  estimatedSecondsRemaining: number;
+}
+
+export type ProgressCallback = (progress: ProgressUpdate) => void;
+
 /**
  * Service pour détecter les interactions d'un utilisateur avec les dApps
  * Utilise HyperSync pour scanner rapidement l'historique on-chain
  */
 export class UserInteractionsService {
   private envioService;
+  private progressCallback?: ProgressCallback;
 
   constructor() {
     this.envioService = createEnvioService();
+  }
+
+  /**
+   * Définir un callback pour recevoir les mises à jour de progression
+   */
+  setProgressCallback(callback: ProgressCallback) {
+    this.progressCallback = callback;
   }
 
   /**
@@ -121,19 +139,19 @@ export class UserInteractionsService {
 
     console.log(`📦 Analyse des blocs ${startBlock} à ${endBlock}`);
 
-    // 3. Récupérer TOUTES les transactions de l'utilisateur ET tous les logs des contrats dApps
+    // 3. Récupérer TOUTES les transactions de l'utilisateur vers les contrats dApps
     console.log(`🔎 Récupération de toutes les activités...`);
 
-    const [userTransactions, userLogs, allDappLogs] = await Promise.all([
-      // Transactions directes de l'utilisateur
-      this.getUserTransactions(normalizedAddress, startBlock, endBlock),
+    const [userTransactionsToDapps, userLogs, allDappLogs] = await Promise.all([
+      // Transactions directes de l'utilisateur vers LES CONTRATS DAPPS SPÉCIFIQUEMENT
+      this.getUserTransactionsToDapps(normalizedAddress, validContracts.map(dc => dc.address), startBlock, endBlock),
       // Logs où l'utilisateur apparaît dans les topics
       this.getUserLogs(normalizedAddress, startBlock, endBlock),
       // NOUVEAU: Tous les logs des contrats dApps dans la plage de blocs
       this.getAllDappContractLogs(validContracts.map(dc => dc.address), startBlock, endBlock),
     ]);
 
-    console.log(`📊 ${userTransactions.length} transactions + ${userLogs.length} logs utilisateur + ${allDappLogs.length} logs dApps`);
+    console.log(`📊 ${userTransactionsToDapps.length} transactions + ${userLogs.length} logs utilisateur + ${allDappLogs.length} logs dApps`);
 
     // 4. Matcher les transactions ET les logs avec les contrats des dApps
     const interactionsByDapp = new Map<string, {
@@ -152,7 +170,7 @@ export class UserInteractionsService {
     );
 
     // Traiter les transactions directes
-    for (const tx of userTransactions) {
+    for (const tx of userTransactionsToDapps) {
       const toAddress = tx.to?.toLowerCase();
       if (!toAddress) continue; // Ignore les transactions de création de contrat
 
@@ -313,50 +331,99 @@ export class UserInteractionsService {
   }
 
   /**
-   * Récupère toutes les transactions envoyées par l'utilisateur
+   * Récupère les transactions de l'utilisateur vers les contrats dApps
+   * NOUVELLE APPROCHE ULTRA-OPTIMISÉE:
+   * Pour chaque contrat dApp, cherche si l'utilisateur a interagi avec
+   * Dès qu'on trouve UNE interaction, on passe à la dApp suivante
+   * Beaucoup plus rapide que de récupérer toutes les transactions de l'utilisateur !
    */
-  private async getUserTransactions(
+  private async getUserTransactionsToDapps(
     userAddress: string,
+    dappContractAddresses: string[],
     fromBlock: number,
     toBlock: number
   ): Promise<any[]> {
     try {
       const normalizedAddress = userAddress.toLowerCase();
 
-      console.log(`🔎 Recherche des transactions pour ${userAddress}...`);
+      console.log(`🔎 Scan rapide par contrat dApp (${dappContractAddresses.length} contrats)...`);
+      console.log(`   ⚡ Optimisation: arrêt dès la 1ère interaction trouvée par contrat`);
 
-      // Requête HyperSync pour récupérer les transactions de l'utilisateur
-      const query: HyperSyncQuery = {
-        from_block: fromBlock,
-        to_block: toBlock,
-        transactions: [
-          {
-            from: [normalizedAddress], // Transactions envoyées par l'utilisateur
+      const allTransactions: any[] = [];
+      const txHashes = new Set<string>();
+      const startTime = Date.now();
+      let lastLogTime = startTime;
+
+      // Pour chaque contrat dApp
+      for (let i = 0; i < dappContractAddresses.length; i++) {
+        const contractAddress = dappContractAddresses[i].toLowerCase();
+
+        // Chercher les transactions FROM l'utilisateur TO ce contrat
+        const query: HyperSyncQuery = {
+          from_block: fromBlock,
+          to_block: toBlock,
+          transactions: [{
+            from: [normalizedAddress],
+            to: [contractAddress],
+          }],
+          field_selection: {
+            transaction: [
+              'from',
+              'to',
+              'hash',
+              'block_number',
+              'gas_used',
+              'transaction_index',
+            ],
           },
-        ],
-        field_selection: {
-          transaction: [
-            'from',
-            'to',
-            'hash',
-            'block_number',
-            'gas_used',
-            'transaction_index',
-          ],
-        },
-      };
+        };
 
-      const response = await this.envioService['client'].post('/query', query);
+        const response = await this.envioService['client'].post('/query', query);
 
-      // Extraire les transactions
-      let transactions: any[] = [];
-      if (Array.isArray(response.data.data) && response.data.data.length > 0) {
-        transactions = response.data.data[0].transactions || [];
+        // Extraire les transactions (devrait en retourner max 1 avec HyperSync)
+        if (Array.isArray(response.data.data) && response.data.data.length > 0) {
+          const transactions = response.data.data[0].transactions || [];
+
+          for (const tx of transactions) {
+            if (!txHashes.has(tx.hash)) {
+              txHashes.add(tx.hash);
+              allTransactions.push(tx);
+            }
+          }
+        }
+
+        // Progression toutes les 5 secondes ou tous les 25 contrats
+        const currentTime = Date.now();
+        const elapsed = (currentTime - startTime) / 1000;
+        const rate = (i + 1) / elapsed;
+        const remaining = (dappContractAddresses.length - (i + 1)) / rate;
+        const percentage = ((i + 1) / dappContractAddresses.length) * 100;
+
+        if ((currentTime - lastLogTime) >= 5000 || (i + 1) % 25 === 0 || (i + 1) === dappContractAddresses.length) {
+          lastLogTime = currentTime;
+          console.log(
+            `   ⏳ ${(i + 1)}/${dappContractAddresses.length} (${percentage.toFixed(1)}%) | ` +
+            `${allTransactions.length} tx | ~${Math.ceil(remaining)}s`
+          );
+
+          // Callback de progression
+          if (this.progressCallback) {
+            this.progressCallback({
+              current: i + 1,
+              total: dappContractAddresses.length,
+              percentage,
+              transactionsFound: allTransactions.length,
+              estimatedSecondsRemaining: Math.ceil(remaining),
+            });
+          }
+        }
       }
 
-      console.log(`✓ ${transactions.length} transactions trouvées`);
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`   ✅ Scan complet en ${totalTime}s`);
+      console.log(`✓ ${allTransactions.length} transactions trouvées`);
 
-      return transactions;
+      return allTransactions;
     } catch (error) {
       console.error('Erreur lors de la récupération des transactions utilisateur:', error);
       return [];
@@ -404,7 +471,6 @@ export class UserInteractionsService {
             ],
             transaction: ['from'], // Récupérer aussi le from de la transaction
           },
-          include_all_blocks: false,
         };
 
         const response = await this.envioService['client'].post('/query', query);

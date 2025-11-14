@@ -37,6 +37,8 @@ interface DappsContextValue {
   userInteractedDappIds: string[];
   loadUserInteractions: (userAddress: string) => Promise<void>;
   syncMessage: string;
+  interactionsLoading: boolean;
+  interactionsProgress: string;
 }
 
 const DappsContext = createContext<DappsContextValue | undefined>(undefined);
@@ -48,6 +50,8 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [userInteractedDappIds, setUserInteractedDappIds] = useState<string[]>([]);
   const [syncMessage, setSyncMessage] = useState<string>("");
+  const [interactionsLoading, setInteractionsLoading] = useState(false);
+  const [interactionsProgress, setInteractionsProgress] = useState<string>("");
 
   /**
    * Load dApps from database
@@ -141,31 +145,66 @@ export function DappsProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Load user interactions with dApps
+   * Load user interactions with dApps using real-time streaming
    */
   const loadUserInteractions = useCallback(async (userAddress: string) => {
     try {
+      setInteractionsLoading(true);
+      setInteractionsProgress("Démarrage de l'analyse...");
       console.log(`🔍 Loading interactions for ${userAddress}...`);
 
-      const response = await fetch(
-        `/api/user/interactions?address=${encodeURIComponent(userAddress)}`
+      // Utiliser l'API de streaming pour les mises à jour en temps réel
+      const eventSource = new EventSource(
+        `/api/user/interactions-stream?address=${encodeURIComponent(userAddress)}`
       );
 
-      if (!response.ok) {
-        throw new Error(`Failed to load user interactions: ${response.statusText}`);
-      }
+      eventSource.addEventListener("start", (event) => {
+        console.log("📡 Stream started");
+        setInteractionsProgress("Scan des contrats en cours...");
+      });
 
-      const data = await response.json();
-      if (data.success) {
-        setUserInteractedDappIds(data.interactedDappIds || []);
-        console.log(`✅ Loaded ${data.interactedDappIds?.length || 0} interactions`);
-      } else {
-        console.warn("Failed to load user interactions:", data.error);
+      eventSource.addEventListener("progress", (event) => {
+        const progress = JSON.parse(event.data);
+        // Format: X/Y contrats scannés
+        const message = `${progress.current}/${progress.total} contrats (${progress.percentage.toFixed(0)}%) | ${progress.transactionsFound} tx | ~${progress.estimatedSecondsRemaining}s`;
+        setInteractionsProgress(message);
+        console.log(`⏳ Progress: ${message}`);
+      });
+
+      eventSource.addEventListener("complete", (event) => {
+        const data = JSON.parse(event.data);
+        if (data.success) {
+          setUserInteractedDappIds(data.interactedDappIds || []);
+          console.log(`✅ Loaded ${data.interactedDappIds?.length || 0} interactions`);
+          setInteractionsProgress(`${data.interactedDappIds?.length || 0} interactions trouvées`);
+
+          // Clear progress message after 3 seconds
+          setTimeout(() => {
+            setInteractionsProgress("");
+            setInteractionsLoading(false);
+          }, 3000);
+        } else {
+          console.warn("Failed to load user interactions:", data.error);
+          setUserInteractedDappIds([]);
+          setInteractionsProgress("Erreur lors de la recherche");
+          setInteractionsLoading(false);
+        }
+        eventSource.close();
+      });
+
+      eventSource.addEventListener("error", (event) => {
+        console.error("Error in event stream:", event);
         setUserInteractedDappIds([]);
-      }
+        setInteractionsProgress("Erreur de connexion");
+        setInteractionsLoading(false);
+        eventSource.close();
+      });
+
     } catch (err) {
       console.error("Error loading user interactions:", err);
       setUserInteractedDappIds([]);
+      setInteractionsProgress("Erreur lors de la recherche");
+      setInteractionsLoading(false);
     }
   }, []);
 
@@ -275,6 +314,8 @@ export function DappsProvider({ children }: { children: ReactNode }) {
         userInteractedDappIds,
         loadUserInteractions,
         syncMessage,
+        interactionsLoading,
+        interactionsProgress,
       }}
     >
       {children}

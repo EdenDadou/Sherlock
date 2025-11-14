@@ -29,7 +29,15 @@
       "Bash(for file in analyze-specific-tx.ts analyze-user-transactions.ts check-hypersync-status.ts debug-detection.ts debug-monvision-page.ts rescrape-atlantis.ts)",
       "Bash(do)",
       "Bash(echo:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(scripts/check-hypersync-capabilities.ts )",
+      "Bash(scripts/debug-pagination.ts )",
+      "Bash(scripts/debug-received-tx.ts )",
+      "Bash(scripts/debug-sent-tx.ts )",
+      "Bash(scripts/find-all-wallet-transactions.ts )",
+      "Bash(scripts/find-factory-swap-interactions.ts )",
+      "Bash(scripts/find-specific-tx.ts )",
+      "Bash(scripts/test-optimized-interactions.ts)"
     ],
     "deny": [],
     "ask": []
